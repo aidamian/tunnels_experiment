@@ -64,6 +64,11 @@ Build a reproducible demo showing that:
      - a direct HTTPS Neo4j API consumer.
    - compatibility wrapper remains available at `scripts/run_experiment.py`.
 
+3. `scripts/sre/start_cloudflared_forwards.py`
+   - optional operator helper for client-side `cloudflared access tcp` forwards;
+   - exposes plain localhost ports for DBeaver and Neo4j Bolt clients without using the repository's custom Python bridge;
+   - keeps the Cloudflare client-side transport aligned with the official arbitrary-TCP pattern.
+
 ### Top-level Compose service
 1. `dind-host-container`
    - single top-level Docker-in-Docker container;
@@ -119,6 +124,12 @@ Build a reproducible demo showing that:
    - all writes and reads succeeded;
    - the top-level container published no ports;
    - logs and reports were written to the expected locations.
+
+### Optional direct-client path
+1. `scripts/sre/start_cloudflared_forwards.py` starts client-side `cloudflared access tcp` helper containers on the real machine.
+2. DBeaver connects to `127.0.0.1:55432` as if PostgreSQL were local.
+3. The Neo4j Python driver connects to `bolt://127.0.0.1:57687` as if Bolt were local.
+4. `scripts/sre/stop_cloudflared_forwards.py` removes those helper containers when the operator is done.
 
 ## Milestones
 ### Milestone 1: Runtime and logging scaffolding

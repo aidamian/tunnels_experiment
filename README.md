@@ -53,6 +53,8 @@ The host-side Python code now has a clearer split inside `scripts/`:
   - shared env, file, Docker, dependency, and topology helpers
 - `scripts/src/tunnels_experiment/bridges/`
   - the Cloudflare TCP-over-WebSocket bridge implementation
+- `scripts/src/tunnels_experiment/access/`
+  - client-side `cloudflared access tcp` forward management for DBeaver and Bolt clients
 - `scripts/src/tunnels_experiment/checks/`
   - separate PostgreSQL, Neo4j Bolt, and Neo4j HTTPS proof logic
 - `scripts/src/tunnels_experiment/experiment/`
@@ -87,6 +89,63 @@ The short answer to "aren't Cloudflare tunnels HTTPS by definition?" is no.
 So the public hostname is a Cloudflare HTTPS/TLS endpoint, but the payload inside that connection can still be a raw TCP application such as Bolt or PostgreSQL.
 
 In the official Cloudflare model, non-HTTP applications normally use a client-side `cloudflared` helper. This repository makes that transport explicit by implementing the same bridge idea directly in Python for the host-side proof workload.
+
+## Direct DBeaver And Bolt Access Without The Python Bridge
+
+The custom Python bridge is no longer the only supported client-side option.
+
+- Cloudflare's published-application protocol docs say TCP services are carried over a WebSocket connection and that end users connect with `cloudflared access tcp`: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/protocols/
+- The arbitrary TCP guide shows the exact client pattern: `cloudflared access tcp --hostname <host> --url localhost:<port>`: https://developers.cloudflare.com/cloudflare-one/access-controls/applications/non-http/cloudflared-authentication/arbitrary-tcp/
+
+What this means in practice:
+
+- Direct `psycopg` or Bolt connections to `*.ratio1.link:443` do not work in this topology because the public endpoint is speaking Cloudflare's HTTP/WebSocket edge protocol, not a native raw PostgreSQL or Bolt socket.
+- A client-side `cloudflared access tcp` helper does work because it exposes an ordinary localhost TCP port and handles the Cloudflare transport itself.
+
+The repository now provides tracked helper scripts for that path:
+
+```bash
+python3 scripts/sre/start_cloudflared_forwards.py
+```
+
+Optional proof path with the repo virtualenv:
+
+```bash
+.venv/bin/python scripts/sre/start_cloudflared_forwards.py --verify
+```
+
+This starts two local forwards:
+
+- PostgreSQL: `127.0.0.1:55432`
+- Neo4j Bolt: `127.0.0.1:57687`
+
+DBeaver can use the PostgreSQL forward with these settings:
+
+- host: `127.0.0.1`
+- port: `55432`
+- database: `tunnel_demo`
+- user: `tunnel_demo`
+- password: `tunnel-demo-postgres`
+- SSL: disable
+
+Python Neo4j code can use the Bolt forward like this:
+
+```python
+from neo4j import GraphDatabase
+
+driver = GraphDatabase.driver(
+  "bolt://127.0.0.1:57687",
+  auth=("neo4j", "tunnel-demo-neo4j"),
+)
+```
+
+Stop the local forwards with:
+
+```bash
+python3 scripts/sre/stop_cloudflared_forwards.py
+```
+
+If you want truly direct long-lived client connectivity without running a per-port local forward, Cloudflare's protocol docs recommend Client-to-Tunnel/WARP for those cases instead of published TCP over WebSocket.
 
 ## Why `127.0.0.1:` Matters
 

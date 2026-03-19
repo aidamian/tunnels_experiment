@@ -34,7 +34,8 @@ This file is the builder runbook. `PLANNING.md` is the architecture source of tr
    - Neo4j HTTPS read proof
 5. Verification and documentation
    - `start.sh`
-   - `scripts/smoke_test.py`
+   - `scripts/sre/smoke_test.py`
+   - optional client-side `cloudflared access tcp` helpers for DBeaver and Bolt
    - `DOCUMENTATION.md`
    - `_logs/RUNLOG.md`
    - `_logs/YYMMDD_HHMMSS_summary.md`
