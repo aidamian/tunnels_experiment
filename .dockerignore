@@ -1,0 +1,10 @@
+.git
+.gitignore
+_logs
+.runtime
+tunnels.json
+LOCAL_TODO.md
+__pycache__
+*.pyc
+*.pyo
+*.pyd

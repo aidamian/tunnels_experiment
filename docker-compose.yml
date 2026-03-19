@@ -1,0 +1,112 @@
+name: tunnels-experiment
+
+x-dind-common: &dind-common
+  build:
+    context: .
+    dockerfile: docker/dind/Dockerfile
+  privileged: true
+  env_file:
+    - .runtime/tunnels.env
+  environment:
+    DOCKER_HOST: tcp://127.0.0.1:2375
+    DOCKER_TLS_CERTDIR: ""
+    LOGS_DIR: /logs
+    NEO4J_USER: neo4j
+    NEO4J_PASSWORD: tunnel-demo-neo4j
+    POSTGRES_USER: tunnel_demo
+    POSTGRES_PASSWORD: tunnel-demo-postgres
+    POSTGRES_DB: tunnel_demo
+  volumes:
+    - ./:/workspace:ro
+    - ./_logs:/logs
+  restart: unless-stopped
+  networks:
+    - tunnel-demo
+
+services:
+  embedded-neo4j:
+    <<: *dind-common
+    container_name: tunnels-embedded-neo4j
+    environment:
+      DOCKER_HOST: tcp://127.0.0.1:2375
+      DIND_ROLE: neo4j
+      DOCKER_TLS_CERTDIR: ""
+      LOGS_DIR: /logs
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: tunnel-demo-neo4j
+      POSTGRES_USER: tunnel_demo
+      POSTGRES_PASSWORD: tunnel-demo-postgres
+      POSTGRES_DB: tunnel_demo
+    command: ["/bin/bash", "/workspace/docker/dind/start-role.sh"]
+    volumes:
+      - ./:/workspace:ro
+      - ./_logs:/logs
+      - embedded-neo4j-docker:/var/lib/docker
+    healthcheck:
+      test: ["CMD-SHELL", "docker exec neo4j-demo cypher-shell -u $$NEO4J_USER -p $$NEO4J_PASSWORD 'RETURN 1 AS ready;' >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 75s
+
+  embedded-postgres:
+    <<: *dind-common
+    container_name: tunnels-embedded-postgres
+    environment:
+      DOCKER_HOST: tcp://127.0.0.1:2375
+      DIND_ROLE: postgres
+      DOCKER_TLS_CERTDIR: ""
+      LOGS_DIR: /logs
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: tunnel-demo-neo4j
+      POSTGRES_USER: tunnel_demo
+      POSTGRES_PASSWORD: tunnel-demo-postgres
+      POSTGRES_DB: tunnel_demo
+    command: ["/bin/bash", "/workspace/docker/dind/start-role.sh"]
+    volumes:
+      - ./:/workspace:ro
+      - ./_logs:/logs
+      - embedded-postgres-docker:/var/lib/docker
+    healthcheck:
+      test: ["CMD-SHELL", "docker exec -e PGPASSWORD=$$POSTGRES_PASSWORD postgres-demo pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 40s
+
+  master:
+    <<: *dind-common
+    container_name: tunnels-master
+    depends_on:
+      - embedded-neo4j
+      - embedded-postgres
+    environment:
+      DOCKER_HOST: tcp://127.0.0.1:2375
+      DIND_ROLE: master
+      DOCKER_TLS_CERTDIR: ""
+      LOGS_DIR: /logs
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: tunnel-demo-neo4j
+      POSTGRES_USER: tunnel_demo
+      POSTGRES_PASSWORD: tunnel-demo-postgres
+      POSTGRES_DB: tunnel_demo
+    command: ["/bin/bash", "/workspace/docker/dind/start-role.sh"]
+    volumes:
+      - ./:/workspace:ro
+      - ./_logs:/logs
+      - master-docker:/var/lib/docker
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:18000/healthz >/dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+
+networks:
+  tunnel-demo:
+    driver: bridge
+
+volumes:
+  embedded-neo4j-docker:
+  embedded-postgres-docker:
+  master-docker:
