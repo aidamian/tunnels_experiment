@@ -1,21 +1,21 @@
 RUNTIME_ENV := .runtime/tunnels.env
 
-.PHONY: prepare-runtime up down logs smoke config
+.PHONY: prepare-runtime config up down start smoke
 
 prepare-runtime:
 	python3 scripts/prepare_runtime.py
 
 config: prepare-runtime
-	docker compose config
+	docker compose config -q
 
 up: prepare-runtime
 	docker compose up --build -d
 
 down:
-	docker compose down --remove-orphans
+	docker compose down --remove-orphans --volumes
 
-logs:
-	docker compose logs -f --tail=100
+start:
+	./start.sh
 
-smoke: prepare-runtime
+smoke:
 	python3 scripts/smoke_test.py

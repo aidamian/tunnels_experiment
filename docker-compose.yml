@@ -1,112 +1,36 @@
 name: tunnels-experiment
 
-x-dind-common: &dind-common
-  build:
-    context: .
-    dockerfile: docker/dind/Dockerfile
-  privileged: true
-  env_file:
-    - .runtime/tunnels.env
-  environment:
-    DOCKER_HOST: tcp://127.0.0.1:2375
-    DOCKER_TLS_CERTDIR: ""
-    LOGS_DIR: /logs
-    NEO4J_USER: neo4j
-    NEO4J_PASSWORD: tunnel-demo-neo4j
-    POSTGRES_USER: tunnel_demo
-    POSTGRES_PASSWORD: tunnel-demo-postgres
-    POSTGRES_DB: tunnel_demo
-  volumes:
-    - ./:/workspace:ro
-    - ./_logs:/logs
-  restart: unless-stopped
-  networks:
-    - tunnel-demo
-
 services:
-  embedded-neo4j:
-    <<: *dind-common
-    container_name: tunnels-embedded-neo4j
+  dind-host-container:
+    build:
+      context: .
+      dockerfile: docker/dind/Dockerfile
+    container_name: dind-host-container
+    privileged: true
+    env_file:
+      - .runtime/tunnels.env
     environment:
+      # Keep the nested Docker API private to the container itself.
       DOCKER_HOST: tcp://127.0.0.1:2375
-      DIND_ROLE: neo4j
       DOCKER_TLS_CERTDIR: ""
       LOGS_DIR: /logs
-      NEO4J_USER: neo4j
-      NEO4J_PASSWORD: tunnel-demo-neo4j
-      POSTGRES_USER: tunnel_demo
-      POSTGRES_PASSWORD: tunnel-demo-postgres
-      POSTGRES_DB: tunnel_demo
-    command: ["/bin/bash", "/workspace/docker/dind/start-role.sh"]
+    entrypoint:
+      - /bin/bash
+      - /workspace/docker/dind/start-host.sh
     volumes:
+      # The workspace is read-only. Runtime state lives under /logs and /var/lib/docker.
       - ./:/workspace:ro
       - ./_logs:/logs
-      - embedded-neo4j-docker:/var/lib/docker
+      - dind-host-docker:/var/lib/docker
     healthcheck:
-      test: ["CMD-SHELL", "docker exec neo4j-demo cypher-shell -u $$NEO4J_USER -p $$NEO4J_PASSWORD 'RETURN 1 AS ready;' >/dev/null 2>&1"]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 75s
-
-  embedded-postgres:
-    <<: *dind-common
-    container_name: tunnels-embedded-postgres
-    environment:
-      DOCKER_HOST: tcp://127.0.0.1:2375
-      DIND_ROLE: postgres
-      DOCKER_TLS_CERTDIR: ""
-      LOGS_DIR: /logs
-      NEO4J_USER: neo4j
-      NEO4J_PASSWORD: tunnel-demo-neo4j
-      POSTGRES_USER: tunnel_demo
-      POSTGRES_PASSWORD: tunnel-demo-postgres
-      POSTGRES_DB: tunnel_demo
-    command: ["/bin/bash", "/workspace/docker/dind/start-role.sh"]
-    volumes:
-      - ./:/workspace:ro
-      - ./_logs:/logs
-      - embedded-postgres-docker:/var/lib/docker
-    healthcheck:
-      test: ["CMD-SHELL", "docker exec -e PGPASSWORD=$$POSTGRES_PASSWORD postgres-demo pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB >/dev/null 2>&1"]
+      test:
+        - CMD-SHELL
+        - test -f /logs/raw/$${RUN_TS}_topology_ready.json && jq -e '.all_ready == true' /logs/raw/$${RUN_TS}_topology_ready.json >/dev/null
       interval: 10s
-      timeout: 10s
-      retries: 20
+      timeout: 5s
+      retries: 30
       start_period: 40s
-
-  master:
-    <<: *dind-common
-    container_name: tunnels-master
-    depends_on:
-      - embedded-neo4j
-      - embedded-postgres
-    environment:
-      DOCKER_HOST: tcp://127.0.0.1:2375
-      DIND_ROLE: master
-      DOCKER_TLS_CERTDIR: ""
-      LOGS_DIR: /logs
-      NEO4J_USER: neo4j
-      NEO4J_PASSWORD: tunnel-demo-neo4j
-      POSTGRES_USER: tunnel_demo
-      POSTGRES_PASSWORD: tunnel-demo-postgres
-      POSTGRES_DB: tunnel_demo
-    command: ["/bin/bash", "/workspace/docker/dind/start-role.sh"]
-    volumes:
-      - ./:/workspace:ro
-      - ./_logs:/logs
-      - master-docker:/var/lib/docker
-    healthcheck:
-      test: ["CMD-SHELL", "test -f /logs/$${RUN_TS}_consumer_report.json && jq -e '.all_ok == true and .run_id == env.RUN_TS' /logs/$${RUN_TS}_consumer_report.json >/dev/null"]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 120s
-
-networks:
-  tunnel-demo:
-    driver: bridge
+    restart: unless-stopped
 
 volumes:
-  embedded-neo4j-docker:
-  embedded-postgres-docker:
-  master-docker:
+  dind-host-docker:

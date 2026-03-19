@@ -213,3 +213,5 @@ LOCAL_TODO.md
 
 .runtime/
 _logs/*.json
+_logs/raw/*
+!_logs/raw/.gitkeep
