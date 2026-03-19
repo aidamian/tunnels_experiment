@@ -40,10 +40,10 @@ This file is the builder runbook. `PLANNING.md` is the architecture source of tr
    - `_logs/YYMMDD_HHMMSS_summary.md`
 
 ## Validation Discipline
-- Run `python3 scripts/prepare_runtime.py` before Compose commands.
+- Run `python3 scripts/sre/prepare_runtime.py` before Compose commands.
 - Use `docker compose config -q` to validate Compose without printing secret-expanded config.
 - Use `./start.sh` for the real integration path.
-- Use `python3 scripts/smoke_test.py --run-ts ...` for report validation when debugging.
+- Use `python3 scripts/sre/smoke_test.py --run-ts ...` for report validation when debugging.
 
 ## Scope Limits
 - Do not publish any service port from the top-level DinD host container to the real machine.

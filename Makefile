@@ -3,7 +3,7 @@ RUNTIME_ENV := .runtime/tunnels.env
 .PHONY: prepare-runtime config up down start smoke
 
 prepare-runtime:
-	python3 scripts/prepare_runtime.py
+	python3 scripts/sre/prepare_runtime.py
 
 config: prepare-runtime
 	docker compose config -q
@@ -18,4 +18,4 @@ start:
 	./start.sh
 
 smoke:
-	python3 scripts/smoke_test.py
+	python3 scripts/sre/smoke_test.py

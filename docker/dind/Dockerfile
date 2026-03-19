@@ -8,18 +8,16 @@ RUN apk add --no-cache bash curl jq netcat-openbsd
 
 WORKDIR /opt/tunnel-demo
 
-# Keep the DinD host self-contained: the entrypoint, orchestrator, and the
-# per-service startup scripts all live inside the built image.
+# Keep the DinD host self-contained: the entrypoint, orchestrator, shared
+# helpers, and the entire service-script directory all live inside the image.
 COPY docker/dind/entrypoint.sh /usr/local/bin/tunnel-demo-entrypoint.sh
 COPY docker/dind/orchestrator.sh /usr/local/bin/tunnel-demo-orchestrator.sh
 COPY docker/dind/lib/common.sh /opt/tunnel-demo/lib/common.sh
-COPY docker/dind/servers/neo4j.sh /opt/tunnel-demo/servers/neo4j.sh
-COPY docker/dind/servers/pgsql.sh /opt/tunnel-demo/servers/pgsql.sh
+COPY docker/dind/servers/ /opt/tunnel-demo/servers/
 
 RUN chmod +x \
     /usr/local/bin/tunnel-demo-entrypoint.sh \
     /usr/local/bin/tunnel-demo-orchestrator.sh \
-    /opt/tunnel-demo/servers/neo4j.sh \
-    /opt/tunnel-demo/servers/pgsql.sh
+    /opt/tunnel-demo/servers/*.sh
 
 ENTRYPOINT ["/usr/local/bin/tunnel-demo-entrypoint.sh"]

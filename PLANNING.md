@@ -54,14 +54,15 @@ Build a reproducible demo showing that:
    - writes a tracked `_logs/YYMMDD_HHMMSS_summary.md`;
    - stops the stack unless explicitly told to keep it running.
 
-2. `scripts/run_experiment.py`
-   - runs directly on the real machine;
+2. `scripts/sre/run_experiment.py`
+   - primary operator entrypoint that runs directly on the real machine;
    - starts two host-side local TCP bridge listeners on `127.0.0.1`;
    - bridges those listeners to the public Bolt and PostgreSQL tunnel hostnames over WebSocket;
    - simulates:
      - a DBeaver-style PostgreSQL client;
      - an external Bolt client;
      - a direct HTTPS Neo4j API consumer.
+   - compatibility wrapper remains available at `scripts/run_experiment.py`.
 
 ### Top-level Compose service
 1. `dind-host-container`
@@ -100,14 +101,14 @@ Build a reproducible demo showing that:
 4. Tunnel 4 -> reserved and unused by the automated experiment
 
 ## Demo Flow
-1. `python3 scripts/prepare_runtime.py`
+1. `python3 scripts/sre/prepare_runtime.py`
 2. `docker compose up --build -d`
 3. `dind-host-container` starts its in-image entrypoint and private Docker daemon.
 4. The in-image orchestrator starts:
    - `neo4j-demo`;
    - `postgres-demo`;
    - three outbound `cloudflared tunnel run` processes through the per-service scripts.
-5. `scripts/run_experiment.py` starts two host-side local TCP bridges on the real machine:
+5. `scripts/sre/run_experiment.py` starts two host-side local TCP bridges on the real machine:
    - PostgreSQL bridge for the DBeaver-style flow;
    - Neo4j Bolt bridge for the external Bolt-app flow.
 6. The host script performs about three timed cycles over about 30 seconds:
@@ -122,12 +123,12 @@ Build a reproducible demo showing that:
 ## Milestones
 ### Milestone 1: Runtime and logging scaffolding
 Acceptance criteria:
-- `scripts/prepare_runtime.py` generates `.runtime/tunnels.env` without leaking secrets.
+- `scripts/sre/prepare_runtime.py` generates `.runtime/tunnels.env` without leaking secrets.
 - `_logs/raw/` exists for runtime artifacts.
 - `_logs/RUNLOG.md` exists for appended end-to-end summaries.
 
 Validation:
-- `python3 scripts/prepare_runtime.py`
+- `python3 scripts/sre/prepare_runtime.py`
 
 ### Milestone 2: DinD host orchestration
 Acceptance criteria:
@@ -141,7 +142,7 @@ Validation:
 
 ### Milestone 3: Host-side client simulation
 Acceptance criteria:
-- `scripts/run_experiment.py` runs on the real machine.
+- `scripts/sre/run_experiment.py` runs on the real machine.
 - It uses the three public tunnel hostnames from `.runtime/tunnels.env`.
 - It simulates:
   - DBeaver-style PostgreSQL access through a host-side local TCP bridge;
@@ -150,21 +151,21 @@ Acceptance criteria:
 - It writes a machine-readable report under `_logs/raw/`.
 
 Validation:
-- `python3 scripts/run_experiment.py --help`
+- `python3 scripts/sre/run_experiment.py --help`
 
 ### Milestone 4: End-to-end verification and documentation
 Acceptance criteria:
 - `./start.sh` runs the full demo in one command.
-- `python3 scripts/smoke_test.py` passes against the generated report.
+- `python3 scripts/sre/smoke_test.py` passes against the generated report.
 - `README.md`, `DOCUMENTATION.md`, `_logs/RUNLOG.md`, and the timestamped `_logs/*_summary.md` reflect the verified topology.
 
 Validation:
 - `./start.sh`
-- `python3 scripts/smoke_test.py`
+- `python3 scripts/sre/smoke_test.py`
 
 ## Success Criteria
 The demo is successful when all of the following hold:
-- `python3 scripts/prepare_runtime.py` succeeds.
+- `python3 scripts/sre/prepare_runtime.py` succeeds.
 - `docker compose up --build -d` brings up only `dind-host-container`.
 - `docker compose ps` shows no published ports for `dind-host-container`.
 - Neo4j HTTPS works through tunnel 1.

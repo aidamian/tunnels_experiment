@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compatibility wrapper for the topology readiness wait helper."""
+"""Primary SRE entrypoint for appending the tracked run log."""
 
 from __future__ import annotations
 
@@ -8,11 +8,11 @@ from pathlib import Path
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-SRC_DIR = SCRIPT_DIR / "src"
+SRC_DIR = SCRIPT_DIR.parent / "src"
 if str(SRC_DIR) not in sys.path:
   sys.path.insert(0, str(SRC_DIR))
 
-from tunnels_experiment.sre.wait_for_stack import main
+from tunnels_experiment.sre.append_runlog import main
 
 
 if __name__ == "__main__":
