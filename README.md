@@ -58,6 +58,33 @@ Step by step:
 7. Because the top-level Compose service has no `ports:` section, the real machine still receives no direct Docker port mapping.
 8. For TCP protocols, the host-side Python bridge opens ordinary local sockets so tools such as DBeaver or Neo4j Bolt applications can connect as if the services were local.
 
+## Why `127.0.0.1:` Matters
+
+Inside `dind-host-container`, the service scripts use:
+
+- `docker run -p 127.0.0.1:17474:7474 -p 127.0.0.1:17687:7687 neo4j`
+- `docker run -p 127.0.0.1:15432:5432 postgres`
+
+and not just:
+
+- `docker run -p 17474:7474 ...`
+- `docker run -p 17687:7687 ...`
+- `docker run -p 15432:5432 ...`
+
+The reason is scope.
+
+- `-p 15432:5432` binds `0.0.0.0:15432` inside the DinD host container.
+- `-p 127.0.0.1:15432:5432` binds only loopback inside the DinD host container.
+
+In this repository, the `docker run` host is not the real machine. It is `dind-host-container` itself.
+
+That means:
+
+- `-p 15432:5432` would make PostgreSQL reachable on every interface of `dind-host-container`, including its non-loopback container IP.
+- `-p 127.0.0.1:15432:5432` makes PostgreSQL reachable only to processes running inside that same DinD host, such as `cloudflared`.
+
+So both forms would still avoid publishing directly to the real machine, but the loopback form is stricter and cleaner. It follows least exposure: `cloudflared` can reach the database, while the database is not unnecessarily listening on the DinD host container's other interfaces.
+
 ## What `start.sh` Does
 
 `start.sh` is the full experiment entrypoint. By default it:
