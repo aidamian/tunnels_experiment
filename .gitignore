@@ -212,3 +212,4 @@ tunnels.json
 LOCAL_TODO.md
 
 .runtime/
+_logs/*.json

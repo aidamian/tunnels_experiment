@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import json
-import ssl
 import time
 from pathlib import Path
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 
 def load_env_file(path: Path) -> dict[str, str]:
@@ -28,41 +25,34 @@ def main() -> int:
         raise SystemExit("missing .runtime/tunnels.env; run python3 scripts/prepare_runtime.py first")
 
     env = load_env_file(env_path)
-    consumer_host = env["CONSUMER_HTTP_PUBLIC_HOST"]
-    report_url = f"https://{consumer_host}/report"
-    deadline = time.time() + 240
-    last_error = "no attempt made"
-    context = ssl.create_default_context()
+    run_ts = env["RUN_TS"]
+    report_path = repo_root / "_logs" / f"{run_ts}_consumer_report.json"
+    deadline = time.time() + 300
+    last_error = "no report observed"
 
-    print(f"probing {report_url}")
+    print(f"waiting for consumer report {report_path}")
     while time.time() < deadline:
-        try:
-            request = Request(
-                report_url,
-                headers={
-                    "Accept": "application/json",
-                    "User-Agent": "curl/8.0",
-                },
-            )
-            with urlopen(request, timeout=20, context=context) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-            all_ok = bool(payload.get("all_ok"))
-            if all_ok:
-                print("public smoke test passed")
+        if report_path.exists():
+            try:
+                payload = json.loads(report_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                last_error = f"invalid json: {exc}"
+                time.sleep(3)
+                continue
+
+            if payload.get("run_id") != run_ts:
+                last_error = f"unexpected run_id {payload.get('run_id')!r}"
+            elif payload.get("all_ok"):
+                print("smoke test passed")
                 print(json.dumps(payload, indent=2))
                 return 0
-            last_error = json.dumps(payload.get("results", {}), indent=2)
-        except HTTPError as exc:
-            last_error = f"http {exc.code}: {exc.reason}"
-        except URLError as exc:
-            last_error = str(exc)
-        except Exception as exc:  # pragma: no cover - integration-oriented fallback
-            last_error = str(exc)
+            else:
+                last_error = json.dumps(payload.get("results", {}), indent=2)
 
-        print(f"waiting for healthy public report: {last_error}")
+        print(f"waiting for healthy consumer report: {last_error}")
         time.sleep(5)
 
-    print("public smoke test failed")
+    print("smoke test failed")
     print(last_error)
     return 1
 

@@ -1,29 +1,37 @@
 from __future__ import annotations
 
-import html
+import argparse
 import json
 import os
 import socket
-import subprocess
-import tempfile
+import threading
 import time
-from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import psycopg
 import requests
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+import websocket
 from neo4j import GraphDatabase
 
 
 LOCALHOST = "127.0.0.1"
+BUFFER_SIZE = 64 * 1024
+
+RUN_ID = os.environ.get("RUN_TS", "")
+REPORT_PATH = Path(
+    os.environ.get(
+        "CONSUMER_REPORT_PATH",
+        f"/logs/{RUN_ID}_consumer_report.json" if RUN_ID else "/logs/consumer_report.json",
+    )
+)
+CONSUMER_INTERVAL_SECONDS = float(os.environ.get("CONSUMER_INTERVAL_SECONDS", "20"))
+CONSUMER_USER_AGENT = os.environ.get("CONSUMER_USER_AGENT", "tunnels-experiment-consumer/1.0")
+
 NEO4J_HTTP_PUBLIC_HOST = os.environ["NEO4J_HTTP_PUBLIC_HOST"]
 NEO4J_BOLT_PUBLIC_HOST = os.environ["NEO4J_BOLT_PUBLIC_HOST"]
 POSTGRES_PUBLIC_HOST = os.environ["POSTGRES_PUBLIC_HOST"]
-CONSUMER_HTTP_PUBLIC_HOST = os.environ.get("CONSUMER_HTTP_PUBLIC_HOST", "")
 
 NEO4J_USER = os.environ["NEO4J_USER"]
 NEO4J_PASSWORD = os.environ["NEO4J_PASSWORD"]
@@ -31,13 +39,8 @@ POSTGRES_USER = os.environ["POSTGRES_USER"]
 POSTGRES_PASSWORD = os.environ["POSTGRES_PASSWORD"]
 POSTGRES_DB = os.environ["POSTGRES_DB"]
 
-NEO4J_BOLT_PROXY_PORT = int(os.environ.get("NEO4J_BOLT_PROXY_PORT", "17687"))
-POSTGRES_PROXY_PORT = int(os.environ.get("POSTGRES_PROXY_PORT", "15432"))
-
 SERVICE_TOKEN_ID = os.environ.get("CF_ACCESS_SERVICE_TOKEN_ID", "")
 SERVICE_TOKEN_SECRET = os.environ.get("CF_ACCESS_SERVICE_TOKEN_SECRET", "")
-
-app = FastAPI(title="Tunnel Consumer Demo")
 
 
 def now_utc() -> str:
@@ -57,55 +60,186 @@ def retry(description: str, attempts: int, delay_seconds: float, fn):
     raise RuntimeError(f"{description} failed: {last_error}") from last_error
 
 
-@contextmanager
-def cloudflared_tcp_proxy(hostname: str, local_port: int):
-    log_path = Path(tempfile.mkdtemp(prefix="cloudflared-proxy-")) / f"{local_port}.log"
-    log_handle = log_path.open("w", encoding="utf-8")
-    command = [
-        "cloudflared",
-        "access",
-        "tcp",
-        "--hostname",
-        hostname,
-        "--url",
-        f"{LOCALHOST}:{local_port}",
-        "--log-level",
-        "info",
-    ]
+def build_access_headers() -> dict[str, str]:
+    headers = {"User-Agent": CONSUMER_USER_AGENT}
     if SERVICE_TOKEN_ID and SERVICE_TOKEN_SECRET:
-        command.extend(
-            [
-                "--service-token-id",
-                SERVICE_TOKEN_ID,
-                "--service-token-secret",
-                SERVICE_TOKEN_SECRET,
-            ]
-        )
+        headers["Cf-Access-Client-Id"] = SERVICE_TOKEN_ID
+        headers["Cf-Access-Client-Secret"] = SERVICE_TOKEN_SECRET
+    return headers
 
-    process = subprocess.Popen(command, stdout=log_handle, stderr=subprocess.STDOUT)
-    try:
-        deadline = time.time() + 20
-        while time.time() < deadline:
-            if process.poll() is not None:
-                break
+
+def write_json_file(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(f"{path.name}.tmp")
+    temp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    temp_path.replace(path)
+
+
+class WebSocketTCPBridge:
+    def __init__(self, hostname: str, headers: dict[str, str], connect_timeout: float = 20) -> None:
+        self.hostname = hostname
+        self.headers = headers
+        self.connect_timeout = connect_timeout
+        self.listener: socket.socket | None = None
+        self.client_socket: socket.socket | None = None
+        self.ws: websocket.WebSocket | None = None
+        self.local_port = 0
+        self.stop_event = threading.Event()
+        self.server_thread: threading.Thread | None = None
+        self.error: Exception | None = None
+        self.error_lock = threading.Lock()
+
+    def __enter__(self) -> "WebSocketTCPBridge":
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind((LOCALHOST, 0))
+        listener.listen(1)
+        listener.settimeout(1)
+        self.listener = listener
+        self.local_port = listener.getsockname()[1]
+        self.server_thread = threading.Thread(target=self._serve, name=f"ws-bridge-{self.hostname}", daemon=True)
+        self.server_thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.stop_event.set()
+        self._close_listener()
+        self._close_client()
+        self._close_websocket()
+        if self.server_thread is not None:
+            self.server_thread.join(timeout=5)
+
+    def raise_if_failed(self) -> None:
+        if self.error is not None:
+            raise RuntimeError(f"{self.hostname} bridge failed: {self.error}") from self.error
+
+    def _set_error(self, exc: Exception) -> None:
+        with self.error_lock:
+            if self.error is None:
+                self.error = exc
+
+    def _close_listener(self) -> None:
+        if self.listener is not None:
             try:
-                with socket.create_connection((LOCALHOST, local_port), timeout=0.5):
-                    yield
-                    return
+                self.listener.close()
             except OSError:
-                time.sleep(0.25)
+                pass
+            self.listener = None
 
-        details = log_path.read_text(encoding="utf-8").strip()
-        raise RuntimeError(f"failed to start cloudflared tcp proxy for {hostname}: {details or 'no log output'}")
-    finally:
-        if process.poll() is None:
-            process.terminate()
+    def _close_client(self) -> None:
+        if self.client_socket is not None:
             try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:  # pragma: no cover - defensive cleanup
-                process.kill()
-                process.wait(timeout=5)
-        log_handle.close()
+                self.client_socket.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                self.client_socket.close()
+            except OSError:
+                pass
+            self.client_socket = None
+
+    def _close_websocket(self) -> None:
+        if self.ws is not None:
+            try:
+                self.ws.close()
+            except Exception:
+                pass
+            self.ws = None
+
+    def _serve(self) -> None:
+        try:
+            client_socket = self._accept_client()
+            if client_socket is None:
+                return
+            self.client_socket = client_socket
+            headers = [f"{key}: {value}" for key, value in self.headers.items()]
+            self.ws = websocket.create_connection(
+                f"wss://{self.hostname}",
+                header=headers,
+                timeout=self.connect_timeout,
+                enable_multithread=True,
+            )
+
+            upstream = threading.Thread(
+                target=self._socket_to_websocket,
+                name=f"sock-to-ws-{self.hostname}",
+                daemon=True,
+            )
+            downstream = threading.Thread(
+                target=self._websocket_to_socket,
+                name=f"ws-to-sock-{self.hostname}",
+                daemon=True,
+            )
+            upstream.start()
+            downstream.start()
+            upstream.join()
+            downstream.join()
+        except Exception as exc:  # pragma: no cover - integration-oriented transport path
+            if not self.stop_event.is_set():
+                self._set_error(exc)
+        finally:
+            self.stop_event.set()
+            self._close_websocket()
+            self._close_client()
+            self._close_listener()
+
+    def _accept_client(self) -> socket.socket | None:
+        assert self.listener is not None
+        while not self.stop_event.is_set():
+            try:
+                client_socket, _ = self.listener.accept()
+                client_socket.settimeout(1)
+                return client_socket
+            except TimeoutError:
+                continue
+            except OSError as exc:
+                if self.stop_event.is_set():
+                    return None
+                raise exc
+        return None
+
+    def _socket_to_websocket(self) -> None:
+        assert self.client_socket is not None
+        assert self.ws is not None
+        try:
+            while not self.stop_event.is_set():
+                try:
+                    data = self.client_socket.recv(BUFFER_SIZE)
+                except TimeoutError:
+                    continue
+                if not data:
+                    return
+                self.ws.send(data, opcode=websocket.ABNF.OPCODE_BINARY)
+        except Exception as exc:  # pragma: no cover - integration-oriented transport path
+            if not self.stop_event.is_set():
+                self._set_error(exc)
+        finally:
+            self.stop_event.set()
+            self._close_websocket()
+
+    def _websocket_to_socket(self) -> None:
+        assert self.client_socket is not None
+        assert self.ws is not None
+        try:
+            while not self.stop_event.is_set():
+                message = self.ws.recv()
+                if message is None:
+                    return
+                if isinstance(message, str):
+                    payload = message.encode("utf-8")
+                else:
+                    payload = message
+                if payload:
+                    self.client_socket.sendall(payload)
+        except websocket.WebSocketConnectionClosedException:
+            if not self.stop_event.is_set():
+                self._set_error(RuntimeError("websocket closed unexpectedly"))
+        except Exception as exc:  # pragma: no cover - integration-oriented transport path
+            if not self.stop_event.is_set():
+                self._set_error(exc)
+        finally:
+            self.stop_event.set()
+            self._close_client()
 
 
 def probe_neo4j_https() -> dict[str, Any]:
@@ -115,6 +249,7 @@ def probe_neo4j_https() -> dict[str, Any]:
         response = requests.post(
             endpoint,
             auth=(NEO4J_USER, NEO4J_PASSWORD),
+            headers={"User-Agent": CONSUMER_USER_AGENT},
             json={
                 "statements": [
                     {
@@ -150,9 +285,9 @@ def probe_neo4j_https() -> dict[str, Any]:
 
 def probe_neo4j_bolt() -> dict[str, Any]:
     def _query() -> dict[str, Any]:
-        with cloudflared_tcp_proxy(NEO4J_BOLT_PUBLIC_HOST, NEO4J_BOLT_PROXY_PORT):
+        with WebSocketTCPBridge(NEO4J_BOLT_PUBLIC_HOST, build_access_headers()) as bridge:
             driver = GraphDatabase.driver(
-                f"bolt://{LOCALHOST}:{NEO4J_BOLT_PROXY_PORT}",
+                f"bolt://{LOCALHOST}:{bridge.local_port}",
                 auth=(NEO4J_USER, NEO4J_PASSWORD),
             )
             try:
@@ -163,10 +298,11 @@ def probe_neo4j_bolt() -> dict[str, Any]:
                     rows = [record.data() for record in result]
             finally:
                 driver.close()
+            bridge.raise_if_failed()
 
         return {
             "ok": True,
-            "transport": "bolt-via-cloudflared-access-tcp",
+            "transport": "bolt-via-public-websocket-hostname",
             "public_host": NEO4J_BOLT_PUBLIC_HOST,
             "records": rows,
         }
@@ -176,10 +312,10 @@ def probe_neo4j_bolt() -> dict[str, Any]:
 
 def probe_postgres() -> dict[str, Any]:
     def _query() -> dict[str, Any]:
-        with cloudflared_tcp_proxy(POSTGRES_PUBLIC_HOST, POSTGRES_PROXY_PORT):
+        with WebSocketTCPBridge(POSTGRES_PUBLIC_HOST, build_access_headers()) as bridge:
             with psycopg.connect(
                 host=LOCALHOST,
-                port=POSTGRES_PROXY_PORT,
+                port=bridge.local_port,
                 dbname=POSTGRES_DB,
                 user=POSTGRES_USER,
                 password=POSTGRES_PASSWORD,
@@ -194,10 +330,11 @@ def probe_postgres() -> dict[str, Any]:
                         {"id": row[0], "label": row[1], "observed_at": row[2]}
                         for row in cursor.fetchall()
                     ]
+            bridge.raise_if_failed()
 
         return {
             "ok": True,
-            "transport": "postgres-via-cloudflared-access-tcp",
+            "transport": "postgres-via-public-websocket-hostname",
             "public_host": POSTGRES_PUBLIC_HOST,
             "rows": rows,
         }
@@ -219,8 +356,9 @@ def run_report() -> dict[str, Any]:
         "postgres_tcp": safe_probe("postgres_tcp", probe_postgres),
     }
     return {
+        "run_id": RUN_ID,
         "timestamp_utc": now_utc(),
-        "consumer_public_url": f"https://{CONSUMER_HTTP_PUBLIC_HOST}" if CONSUMER_HTTP_PUBLIC_HOST else "",
+        "report_path": str(REPORT_PATH),
         "targets": {
             "neo4j_https": f"https://{NEO4J_HTTP_PUBLIC_HOST}",
             "neo4j_bolt": NEO4J_BOLT_PUBLIC_HOST,
@@ -231,84 +369,29 @@ def run_report() -> dict[str, Any]:
     }
 
 
-@app.get("/healthz")
-def healthz() -> dict[str, Any]:
-    return {
-        "status": "ok",
-        "timestamp_utc": now_utc(),
-        "consumer_public_url": f"https://{CONSUMER_HTTP_PUBLIC_HOST}" if CONSUMER_HTTP_PUBLIC_HOST else "",
-    }
+def run_once() -> dict[str, Any]:
+    report = run_report()
+    write_json_file(REPORT_PATH, report)
+    print(json.dumps(report, indent=2), flush=True)
+    return report
 
 
-@app.get("/report")
-def report() -> dict[str, Any]:
-    return run_report()
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Probe the public tunnel hostnames and write a report.")
+    parser.add_argument("--once", action="store_true", help="run one probe cycle and exit")
+    return parser.parse_args()
 
 
-@app.get("/", response_class=HTMLResponse)
-def index() -> HTMLResponse:
-    report_payload = run_report()
-    rows = []
-    for component, details in report_payload["results"].items():
-        status = "OK" if details.get("ok") else "FAILED"
-        summary = html.escape(json.dumps(details, indent=2))
-        rows.append(
-            "<tr>"
-            f"<td>{html.escape(component)}</td>"
-            f"<td>{status}</td>"
-            f"<td><pre>{summary}</pre></td>"
-            "</tr>"
-        )
+def main() -> int:
+    args = parse_args()
+    if args.once:
+        report = run_once()
+        return 0 if report["all_ok"] else 1
 
-    body = f"""
-    <!doctype html>
-    <html lang="en">
-      <head>
-        <meta charset="utf-8">
-        <title>Tunnel Consumer Demo</title>
-        <style>
-          body {{
-            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-            margin: 2rem;
-            background: #f4f1ea;
-            color: #1d1d1d;
-          }}
-          table {{
-            border-collapse: collapse;
-            width: 100%;
-          }}
-          th, td {{
-            border: 1px solid #222;
-            vertical-align: top;
-            padding: 0.75rem;
-          }}
-          th {{
-            background: #ddd4c7;
-          }}
-          pre {{
-            white-space: pre-wrap;
-            margin: 0;
-          }}
-        </style>
-      </head>
-      <body>
-        <h1>Tunnel Consumer Demo</h1>
-        <p>Timestamp (UTC): {html.escape(report_payload["timestamp_utc"])}</p>
-        <p>Public consumer URL: {html.escape(report_payload["consumer_public_url"])}</p>
-        <p>All checks healthy: {report_payload["all_ok"]}</p>
-        <table>
-          <thead>
-            <tr>
-              <th>Component</th>
-              <th>Status</th>
-              <th>Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            {''.join(rows)}
-          </tbody>
-        </table>
-      </body>
-    </html>
-    """
-    return HTMLResponse(body)
+    while True:
+        run_once()
+        time.sleep(CONSUMER_INTERVAL_SECONDS)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -24,9 +24,9 @@ This file is the builder runbook. Treat `PLANNING.md` as the source of truth for
    - PostgreSQL child container and seed data
    - Cloudflare tunnel processes
 4. Consumer workload
-   - Python app
-   - Bolt/PostgreSQL TCP proxy helpers
-   - public report endpoints
+   - Python script
+   - in-process WebSocket bridge for Cloudflare `tcp://` hostnames
+   - JSON report artifact in `_logs/`
 5. Verification and documentation
    - smoke tests
    - tracked summary
@@ -35,9 +35,10 @@ This file is the builder runbook. Treat `PLANNING.md` as the source of truth for
 - Run `python3 scripts/prepare_runtime.py` before Compose commands.
 - Use `docker compose config` to validate configuration before first boot.
 - Use `docker compose up --build -d` for real integration testing.
-- Use `python3 scripts/smoke_test.py` as the final public-path verification.
+- Use `python3 scripts/smoke_test.py` as the final end-to-end verification against the generated consumer report.
 
 ## Scope Limits
 - Do not commit tunnel tokens or generated env files.
 - Do not convert PostgreSQL into an HTTP service. It must remain a TCP tunnel demo.
+- Do not bundle `cloudflared` inside the consumer image.
 - Do not replace the three top-level DinD architecture with direct top-level service containers.

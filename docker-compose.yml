@@ -96,11 +96,11 @@ services:
       - ./_logs:/logs
       - master-docker:/var/lib/docker
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:18000/healthz >/dev/null"]
+      test: ["CMD-SHELL", "test -f /logs/$${RUN_TS}_consumer_report.json && jq -e '.all_ok == true and .run_id == env.RUN_TS' /logs/$${RUN_TS}_consumer_report.json >/dev/null"]
       interval: 15s
       timeout: 10s
       retries: 20
-      start_period: 90s
+      start_period: 120s
 
 networks:
   tunnel-demo:

@@ -161,8 +161,10 @@ run_master_role() {
   log "starting consumer child container"
   docker rm -f "${child_container}" >/dev/null 2>&1 || true
   docker run -d --name "${child_container}" \
-    -p 127.0.0.1:18000:8000 \
-    -e "CONSUMER_HTTP_PUBLIC_HOST=${CONSUMER_HTTP_PUBLIC_HOST}" \
+    -v /logs:/logs \
+    -e "RUN_TS=${run_ts}" \
+    -e "CONSUMER_REPORT_PATH=/logs/${run_ts}_consumer_report.json" \
+    -e "CONSUMER_INTERVAL_SECONDS=15" \
     -e "NEO4J_HTTP_PUBLIC_HOST=${NEO4J_HTTP_PUBLIC_HOST}" \
     -e "NEO4J_BOLT_PUBLIC_HOST=${NEO4J_BOLT_PUBLIC_HOST}" \
     -e "POSTGRES_PUBLIC_HOST=${POSTGRES_PUBLIC_HOST}" \
@@ -173,9 +175,9 @@ run_master_role() {
     -e "POSTGRES_DB=${POSTGRES_DB}" \
     tunnel-demo-consumer:latest >/dev/null
 
-  wait_until "consumer app" 60 2 curl -fsS http://127.0.0.1:18000/healthz
+  wait_until "consumer report" 80 3 sh -lc "test -f /logs/${run_ts}_consumer_report.json && jq -e '.all_ok == true and .run_id == env.RUN_TS' /logs/${run_ts}_consumer_report.json >/dev/null"
 
-  start_tunnel "consumer_http_tunnel" "${CONSUMER_HTTP_TUNNEL_TOKEN}" "http://127.0.0.1:18000"
+  log "tunnel 4 reserved for optional diagnostics; consumer tunnel not started"
   start_cluster_snapshot_loop
 }
 

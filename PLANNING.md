@@ -1,7 +1,7 @@
 # PLANNING.md
 
 ## Objective
-Build a reproducible demo showing that services running inside nested container environments can be exposed to outside consumers through Cloudflare Tunnel, then consumed by a Python application through the provided public hostnames.
+Build a reproducible demo showing that services running inside nested container environments can be exposed through Cloudflare Tunnel, then consumed by a Python application through the provided public hostnames.
 
 ## Inputs And Constraints
 - Runtime tunnel secrets live in `tunnels.json` and must stay untracked.
@@ -22,7 +22,8 @@ Build a reproducible demo showing that services running inside nested container 
 ### Cloudflare Tunnel
 - Cloudflare Tunnel uses outbound-only connections from `cloudflared` to the Cloudflare edge.
 - Public hostnames can route HTTPS, TCP, and other protocols to private origins behind `cloudflared`.
-- Non-HTTP published applications require client-side `cloudflared` for end-user connections. For raw TCP, the documented client flow is `cloudflared access tcp --hostname ... --url localhost:PORT`.
+- Cloudflare `tcp://` published applications are carried over a WebSocket stream at the public hostname rather than exposing a raw database socket directly on that hostname.
+- Direct native Bolt and PostgreSQL handshakes against the public `ratio1.link` hostnames fail, so a Python-only consumer must speak that published WebSocket transport itself instead of shelling out to `cloudflared`.
 - The local `cloudflared` CLI confirms that a named tunnel can be started from a token with `cloudflared tunnel run --token ... --url ...`, which fits the provided `tunnels.json` inputs.
 
 ### Database containers
@@ -35,8 +36,9 @@ Build a reproducible demo showing that services running inside nested container 
 1. `master`
    - Docker-in-Docker container.
    - Runs its own Docker daemon.
-   - Builds and starts the Python consumer app as a child container.
-   - Exposes the consumer app over tunnel 4.
+   - Builds and starts the Python consumer script as a child container.
+   - Stores the latest consumer probe report under `_logs/`.
+   - Does not require tunnel 4 for the consumer flow.
    - Periodically snapshots the two embedded DinD daemons to prove the master role is observability/control, not just a placeholder.
 
 2. `embedded-neo4j`
@@ -62,26 +64,25 @@ Build a reproducible demo showing that services running inside nested container 
 1. Tunnel 1 -> Neo4j HTTPS endpoint
 2. Tunnel 2 -> Neo4j Bolt endpoint
 3. Tunnel 3 -> PostgreSQL TCP endpoint
-4. Tunnel 4 -> Consumer app HTTP endpoint
+4. Tunnel 4 -> Reserved for optional diagnostics and not required for the consumer flow
 
 ### Consumer behavior
-The Python consumer app will prove three access paths:
+The Python consumer container is just a Python script. It will prove three access paths:
 1. Neo4j over public HTTPS by calling the transactional HTTP endpoint through the public hostname.
-2. Neo4j over Bolt by starting a short-lived local `cloudflared access tcp` forwarder and then using the Neo4j Python driver against that local port.
-3. PostgreSQL over TCP by starting a short-lived local `cloudflared access tcp` forwarder and then using `psycopg` against that local port.
+2. Neo4j over Bolt by opening an in-process WebSocket bridge to the public hostname and then using the Neo4j Python driver through that local bridge.
+3. PostgreSQL over TCP by opening an in-process WebSocket bridge to the public hostname and then using `psycopg` through that local bridge.
 
-The consumer app will expose:
-- `/healthz`: lightweight local health endpoint.
-- `/report`: live JSON probe report.
-- `/`: human-readable HTML summary for outside viewers.
+The consumer script will:
+- write a machine-readable JSON report to `_logs/`;
+- print probe results to stdout for `docker logs` debugging;
+- run without bundling `cloudflared` or any other external tunneling tool.
 
 ## Demo Flow
 1. Generate `.runtime/tunnels.env` from `tunnels.json`.
 2. Start the top-level DinD services with Docker Compose.
 3. Each DinD service starts its child container(s) and tunnel processes.
-4. The public consumer URL becomes available through tunnel 4.
-5. An outside user visits the public consumer URL.
-6. The consumer app performs live checks against the three service tunnels and returns a report showing success or failure for each path.
+4. The consumer child container performs live checks against the three service hostnames and writes a report.
+5. Validation reads that report and confirms all three paths are healthy.
 
 ## Milestones
 ### Milestone 1: Repo scaffolding and durable-memory files
@@ -104,18 +105,19 @@ Validation:
 Acceptance criteria:
 - Consumer app can query Neo4j over HTTPS and via Bolt.
 - Consumer app can query PostgreSQL over TCP.
-- Consumer app returns a clear JSON and HTML report.
+- Consumer app writes a clear JSON report and console summary without using `cloudflared`.
 
 Validation:
 - `docker compose up --build -d`
 - `docker compose logs --tail=100 master`
-- `curl -fsS http://127.0.0.1:18000/healthz`
+- `python3 scripts/smoke_test.py`
 
 ### Milestone 4: Public tunnel proof
 Acceptance criteria:
-- The consumer public hostname responds over HTTPS.
-- `/report` shows all three checks as healthy.
-- The outside-consumer path uses the provided Cloudflare URLs, not local shortcuts.
+- Neo4j HTTPS is consumed through `c74d8a4e03e6.ratio1.link`.
+- Neo4j Bolt is consumed through `99c7e7089d1b.ratio1.link`.
+- PostgreSQL TCP is consumed through `60bf15690490.ratio1.link`.
+- The consumer uses only those public service hostnames, not local shortcuts and not a bundled `cloudflared` binary.
 
 Validation:
 - `python3 scripts/smoke_test.py`
@@ -132,15 +134,15 @@ Validation:
 The demo is successful when:
 - all three top-level DinD containers are running;
 - the Neo4j HTTPS public hostname answers transactional queries successfully;
-- the Neo4j Bolt public hostname can be consumed through client-side `cloudflared access tcp`;
-- the PostgreSQL public hostname can be consumed through client-side `cloudflared access tcp`;
-- the public consumer URL presents a healthy report derived from those real tunnel checks.
+- the Neo4j Bolt public hostname can be consumed by the Python consumer through its in-process WebSocket transport;
+- the PostgreSQL public hostname can be consumed by the Python consumer through its in-process WebSocket transport;
+- the latest consumer report in `_logs/` shows all three checks healthy.
 
 ## Risks And Mitigations
 - Tunnel startup delay:
   - Mitigation: health checks and smoke-test retries.
-- Cloudflare TCP client behavior may vary if Access policies are present:
-  - Mitigation: the consumer app uses the documented `cloudflared access tcp` flow and surfaces any proxy startup error explicitly.
+- Cloudflare TCP applications are not raw public sockets:
+  - Mitigation: the consumer uses the public hostnames through a Python WebSocket bridge that matches the documented `tcp://` transport model.
 - Nested Docker can fail if privileged mode is missing:
   - Mitigation: use `privileged: true`, dedicated Docker data volumes, and DinD-specific health checks.
 - Database cold start can exceed naive timeouts:
