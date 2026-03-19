@@ -1,12 +1,13 @@
 # AGENTS.md
 
 ## Purpose
-This repository exists to demonstrate Cloudflare Tunnel access to services running inside containerized environments, with a Python consumer that proves those tunnels work end to end.
+This repository exists to demonstrate Cloudflare Tunnel access to services running inside a single Docker-in-Docker host, with a Python consumer on the real machine that proves those tunnels work end to end.
 
 The intended steady-state topology is:
-- `master`: a top-level Docker-in-Docker (DinD) container that builds and runs the consumer app as a child container and exposes it through tunnel 4.
-- `embedded-neo4j`: a top-level DinD container that runs Neo4j as a child container and exposes it through two tunnels: HTTPS and Bolt/TCP.
-- `embedded-postgres`: a top-level DinD container that runs PostgreSQL as a child container and exposes it through one TCP tunnel.
+- `dind-host-container`: the single top-level Docker-in-Docker (DinD) container.
+- `neo4j-demo`: a direct child container started by the DinD host and exposed through two tunnels: HTTPS and Bolt/TCP.
+- `postgres-demo`: a direct child container started by the DinD host and exposed through one TCP tunnel.
+- `scripts/run_experiment.py`: the host-side Python consumer that reaches those services through the public tunnel hostnames and host-side local TCP bridges.
 
 ## Durable Memory
 Read these files before making non-trivial changes:
@@ -30,7 +31,7 @@ Read these files before making non-trivial changes:
   - tunnel 1: Neo4j HTTPS
   - tunnel 2: Neo4j Bolt/TCP
   - tunnel 3: PostgreSQL TCP
-  - tunnel 4: Consumer HTTP
+  - tunnel 4: reserved and unused by the automated experiment
 - Stop and fix immediately if a validation command fails. Do not continue with a broken milestone.
 - Keep orchestration reproducible with `docker compose`, scripts, and tracked markdown. Avoid relying on undocumented one-off container state.
 - Prefer official images and primary-source documentation for Cloudflare Tunnel, Docker, Neo4j, PostgreSQL, and Codex workflow behavior.
@@ -39,10 +40,10 @@ Read these files before making non-trivial changes:
 ## Definition Of Done
 The project is only complete when all of the following hold:
 - `python3 scripts/prepare_runtime.py` succeeds against the local `tunnels.json`.
-- `docker compose up --build -d` brings up the three top-level DinD containers.
-- The consumer app can prove all of these paths work:
+- `docker compose up --build -d` brings up the single top-level `dind-host-container`.
+- The host-side experiment can prove all of these paths work:
   - Neo4j over public HTTPS
-  - Neo4j over Bolt through client-side `cloudflared access tcp`
-  - PostgreSQL over TCP through client-side `cloudflared access tcp`
-- The public consumer URL returns a healthy report for all three checks.
+  - Neo4j over Bolt through the host-side local TCP bridge
+  - PostgreSQL over TCP through the host-side local TCP bridge
+- The top-level Compose service publishes no ports to the real machine.
 - `DOCUMENTATION.md` and the current timestamped `_logs/*.md` summary reflect the final verified state.

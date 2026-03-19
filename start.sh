@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 # start.sh is the single-command experiment entrypoint.
-# It prepares runtime files, builds the nested topology, runs the host-side
+# It prepares runtime files, builds the DinD-host topology, runs the host-side
 # consumer flow, writes logs, and tears the stack down unless --keep-up is set.
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -94,7 +94,7 @@ ensure_python_env
 run_with_log "validating compose configuration" "${raw_logs_dir}/${run_ts}_compose_config.log" docker compose config -q
 run_with_log "building and starting the stack" "${raw_logs_dir}/${run_ts}_compose_up.log" docker compose up --build -d
 stack_started="true"
-run_with_log "waiting for the nested topology" "${raw_logs_dir}/${run_ts}_wait_for_stack.log" python3 scripts/wait_for_stack.py --run-ts "${run_ts}"
+run_with_log "waiting for the DinD-host topology" "${raw_logs_dir}/${run_ts}_wait_for_stack.log" python3 scripts/wait_for_stack.py --run-ts "${run_ts}"
 
 experiment_cmd=("${venv_dir}/bin/python" "${repo_root}/scripts/run_experiment.py" "--run-ts" "${run_ts}")
 if [[ -n "${duration_seconds}" ]]; then

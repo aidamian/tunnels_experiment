@@ -3,7 +3,7 @@
 ## Objective
 Build a reproducible demo showing that:
 - a single top-level Docker-in-Docker host container can run all outbound Cloudflare Tunnel processes;
-- Neo4j and PostgreSQL can each live one level deeper inside their own nested DinD containers;
+- Neo4j and PostgreSQL can each run as direct child containers of that DinD host;
 - no service port is published from the top-level DinD host container to the real machine;
 - a Python script running directly on the real machine can behave like external clients and reach the databases only through the three public tunnel URLs.
 
@@ -11,8 +11,12 @@ Build a reproducible demo showing that:
 - Runtime tunnel secrets live in `tunnels.json` and must stay untracked.
 - The top-level Compose stack must expose no `ports:` entries to the real machine.
 - The top-level container is the only place where `cloudflared tunnel run` is allowed.
-- Neo4j must run inside a nested DinD child container.
-- PostgreSQL must run inside a different nested DinD child container.
+- The top-level DinD image must be self-contained and include:
+  - an entrypoint that starts the inner Docker daemon;
+  - a separate orchestration script;
+  - per-service scripts under `servers/`.
+- Neo4j must run as a direct child container of the top-level DinD host.
+- PostgreSQL must run as a direct child container of the top-level DinD host.
 - The host-side Python runner must use:
   - Neo4j HTTPS directly over the public hostname;
   - Neo4j Bolt through a host-side local TCP bridge that terminates into the public tunnel hostname;
@@ -30,8 +34,8 @@ Build a reproducible demo showing that:
 
 ### Docker And DinD
 - Nested Docker requires privileged containers and conservative storage settings.
-- Keeping the top-level DinD Docker API bound to loopback avoids publishing it beyond the container.
-- Publishing ports from the database containers to their immediate DinD parent is acceptable as long as those ports are never published again from the top-level container to the real machine.
+- The DinD host can run its child database containers directly and publish their ports only to `127.0.0.1` inside the DinD host container.
+- Keeping the Docker daemon private to the container and avoiding Compose `ports:` entries prevents any service exposure to the real machine.
 
 ### Database Containers
 - Neo4j uses HTTP on `7474` and Bolt on `7687`.
@@ -43,7 +47,7 @@ Build a reproducible demo showing that:
 1. `start.sh`
    - prepares runtime files;
    - brings up the top-level Compose stack;
-   - waits for nested topology readiness;
+   - waits for DinD-host topology readiness;
    - runs the host-side Python experiment for about 30 seconds;
    - validates the report;
    - appends `_logs/RUNLOG.md`;
@@ -63,20 +67,31 @@ Build a reproducible demo showing that:
 1. `dind-host-container`
    - single top-level Docker-in-Docker container;
    - publishes no ports to the real machine;
-   - starts its own Docker daemon;
-   - builds and runs two nested DinD child containers;
+   - starts its own Docker daemon through an in-image entrypoint;
+   - runs an in-image orchestrator;
+   - starts `neo4j-demo` and `postgres-demo` as direct child containers;
    - runs all three outbound `cloudflared tunnel run` processes.
 
-### Nested DinD child containers
-1. `neo4j-dind`
-   - starts its own Docker daemon;
-   - runs `neo4j-demo` as an inner child container;
-   - publishes `7474` and `7687` only to the `neo4j-dind` container boundary.
+### In-image orchestration layout
+1. `docker/dind/entrypoint.sh`
+   - starts `dockerd`;
+   - waits for `docker info`;
+   - hands off to the orchestrator.
 
-2. `postgres-dind`
-   - starts its own Docker daemon;
-   - runs `postgres-demo` as an inner child container;
-   - publishes `5432` only to the `postgres-dind` container boundary.
+2. `docker/dind/orchestrator.sh`
+   - launches `servers/neo4j.sh` and `servers/pgsql.sh`;
+   - waits for ready markers;
+   - writes the topology-ready file used by the host-side wait step.
+
+3. `docker/dind/servers/neo4j.sh`
+   - starts `neo4j-demo`;
+   - publishes `7474` and `7687` only to `127.0.0.1` inside `dind-host-container`;
+   - starts the Neo4j HTTPS and Bolt tunnels.
+
+4. `docker/dind/servers/pgsql.sh`
+   - starts `postgres-demo`;
+   - publishes `5432` only to `127.0.0.1` inside `dind-host-container`;
+   - starts the PostgreSQL TCP tunnel.
 
 ### Tunnel assignment
 1. Tunnel 1 -> Neo4j HTTPS
@@ -87,18 +102,19 @@ Build a reproducible demo showing that:
 ## Demo Flow
 1. `python3 scripts/prepare_runtime.py`
 2. `docker compose up --build -d`
-3. `dind-host-container` starts:
-   - `neo4j-dind`;
-   - `postgres-dind`;
-   - three outbound `cloudflared tunnel run` processes.
-4. `scripts/run_experiment.py` starts two host-side local TCP bridges on the real machine:
+3. `dind-host-container` starts its in-image entrypoint and private Docker daemon.
+4. The in-image orchestrator starts:
+   - `neo4j-demo`;
+   - `postgres-demo`;
+   - three outbound `cloudflared tunnel run` processes through the per-service scripts.
+5. `scripts/run_experiment.py` starts two host-side local TCP bridges on the real machine:
    - PostgreSQL bridge for the DBeaver-style flow;
    - Neo4j Bolt bridge for the external Bolt-app flow.
-5. The host script performs about three timed cycles over about 30 seconds:
+6. The host script performs about three timed cycles over about 30 seconds:
    - insert and read PostgreSQL rows;
    - create and read Neo4j nodes and relationships over Bolt;
    - read the same Neo4j graph over HTTPS.
-6. Validation confirms:
+7. Validation confirms:
    - all writes and reads succeeded;
    - the top-level container published no ports;
    - logs and reports were written to the expected locations.
@@ -113,12 +129,12 @@ Acceptance criteria:
 Validation:
 - `python3 scripts/prepare_runtime.py`
 
-### Milestone 2: Nested orchestration
+### Milestone 2: DinD host orchestration
 Acceptance criteria:
 - `docker-compose.yml` defines only the top-level `dind-host-container`.
 - The Compose service publishes no host ports.
-- The top-level startup script launches `neo4j-dind` and `postgres-dind`.
-- The child DinD containers launch Neo4j and PostgreSQL one level deeper.
+- The DinD image contains the entrypoint, orchestrator, and per-service scripts.
+- The top-level startup flow launches `neo4j-demo` and `postgres-demo` directly.
 
 Validation:
 - `docker compose config -q`
@@ -159,7 +175,7 @@ The demo is successful when all of the following hold:
 - `_logs/RUNLOG.md` contains the end-to-end result.
 
 ## Risks And Mitigations
-- Nested Docker startup can be slow:
+- DinD startup can be slow:
   - Mitigation: explicit readiness polling and health files.
 - TCP tunnel hostnames are not native raw sockets:
   - Mitigation: the host script exposes local TCP bridge ports that translate native client traffic into the published WebSocket transport.

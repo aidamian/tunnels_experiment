@@ -11,8 +11,9 @@ Run this checklist after each milestone and before declaring the demo complete.
 ### Topology
 - Compose defines exactly one top-level service: `dind-host-container`.
 - `dind-host-container` publishes no ports to the real machine.
-- Neo4j runs inside `neo4j-dind` as an inner child container.
-- PostgreSQL runs inside `postgres-dind` as an inner child container.
+- The DinD image contains the tracked startup scripts instead of relying on bind-mounted entry scripts.
+- Neo4j runs inside `neo4j-demo` as a direct child container of the DinD host.
+- PostgreSQL runs inside `postgres-demo` as a direct child container of the DinD host.
 - `cloudflared tunnel run` exists only inside `dind-host-container`.
 - The active Python experiment runs directly on the real machine.
 

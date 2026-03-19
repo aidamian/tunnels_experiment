@@ -10,16 +10,9 @@ services:
     env_file:
       - .runtime/tunnels.env
     environment:
-      # Keep the nested Docker API private to the container itself.
-      DOCKER_HOST: tcp://127.0.0.1:2375
-      DOCKER_TLS_CERTDIR: ""
       LOGS_DIR: /logs
-    entrypoint:
-      - /bin/bash
-      - /workspace/docker/dind/start-host.sh
     volumes:
-      # The workspace is read-only. Runtime state lives under /logs and /var/lib/docker.
-      - ./:/workspace:ro
+      # Runtime state lives under /logs and /var/lib/docker.
       - ./_logs:/logs
       - dind-host-docker:/var/lib/docker
     healthcheck:

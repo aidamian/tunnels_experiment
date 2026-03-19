@@ -441,6 +441,12 @@ def main() -> int:
     report_path = raw_logs_dir / f"{run_id}_experiment_report.json"
     topology = {
         "top_level_container": "dind-host-container",
+        "managed_service_containers": ["neo4j-demo", "postgres-demo"],
+        "local_origins_inside_dind_host": {
+            "neo4j_https": "127.0.0.1:17474",
+            "neo4j_bolt": "127.0.0.1:17687",
+            "postgres_tcp": "127.0.0.1:15432",
+        },
         "top_level_published_ports": top_level_published_ports(),
         "public_hosts": {
             "neo4j_https": env["NEO4J_HTTP_PUBLIC_HOST"],

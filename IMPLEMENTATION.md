@@ -18,11 +18,14 @@ This file is the builder runbook. `PLANNING.md` is the architecture source of tr
 2. Top-level DinD host
    - single-service Compose
    - no published host ports
-   - health marker for nested topology readiness
-3. Nested DinD children
-   - `neo4j-dind` child container
-   - `postgres-dind` child container
-   - inner database containers and seed data
+   - health marker for DinD-host topology readiness
+   - in-image `entrypoint.sh`
+   - in-image `orchestrator.sh`
+   - in-image `servers/neo4j.sh` and `servers/pgsql.sh`
+3. Direct child service containers
+   - `neo4j-demo`
+   - `postgres-demo`
+   - seed data
    - outbound `cloudflared tunnel run` processes only in the top-level host
 4. Host-side experiment
    - host-side TCP bridge listeners for PostgreSQL and Neo4j Bolt
@@ -47,3 +50,4 @@ This file is the builder runbook. `PLANNING.md` is the architecture source of tr
 - Do not run `cloudflared tunnel run` anywhere except the top-level DinD host container.
 - Do not move the active Python consumer back into a container.
 - Do not pretend PostgreSQL or Bolt are HTTP services.
+- Do not reintroduce extra DinD child containers unless `PLANNING.md` changes first.

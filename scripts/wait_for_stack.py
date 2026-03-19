@@ -57,7 +57,7 @@ def main() -> int:
         print(f"current top-level container status: {docker_status()}", flush=True)
         time.sleep(5)
 
-    print("timed out waiting for the nested topology", flush=True)
+    print("timed out waiting for the DinD-host topology", flush=True)
     return 1
 
 
