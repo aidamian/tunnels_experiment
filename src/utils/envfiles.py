@@ -1,30 +1,29 @@
-"""Helpers for the generated `.runtime/tunnels.env` file."""
+"""Helpers for generated host-side runtime files."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 
-def load_env_file(path: Path) -> dict[str, str]:
-  """Parse the generated runtime env file.
+def load_public_hosts_file(path: Path) -> dict[str, str]:
+  """Parse the generated public-host mapping file.
 
   Parameters
   ----------
   path:
-    Path to `.runtime/tunnels.env`.
+    Path to `.runtime/public_hosts.json`.
 
   Returns
   -------
   dict[str, str]
-    Parsed key-value pairs from the env file.
+    Mapping of service keys to public hostnames.
   """
-  # The generated env file is intentionally simple `KEY=VALUE` syntax so the
-  # host-side tools can parse it without depending on shell evaluation.
-  values: dict[str, str] = {}
-  for line in path.read_text(encoding="utf-8").splitlines():
-    stripped = line.strip()
-    if not stripped or stripped.startswith("#"):
-      continue
-    key, value = stripped.split("=", 1)
-    values[key] = value
-  return values
+  payload = json.loads(path.read_text(encoding="utf-8"))
+  if not isinstance(payload, dict):
+    raise ValueError(f"expected a JSON object in {path}")
+
+  hosts: dict[str, str] = {}
+  for key, value in payload.items():
+    hosts[str(key)] = str(value)
+  return hosts

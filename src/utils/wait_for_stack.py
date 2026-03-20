@@ -14,7 +14,6 @@ if str(SRC_DIR) not in sys.path:
   sys.path.insert(0, str(SRC_DIR))
 
 from utils.docker_runtime import docker_status
-from utils.envfiles import load_env_file
 
 
 def parse_args() -> argparse.Namespace:
@@ -28,7 +27,7 @@ def parse_args() -> argparse.Namespace:
   parser = argparse.ArgumentParser(
     description="Wait for the top-level DinD host container to report readiness.",
   )
-  parser.add_argument("--run-ts", help="specific run identifier to wait for")
+  parser.add_argument("--run-ts", required=True, help="specific run identifier to wait for")
   parser.add_argument("--timeout-seconds", type=int, default=300)
   return parser.parse_args()
 
@@ -43,8 +42,7 @@ def main() -> int:
   """
   args = parse_args()
   repo_root = Path(__file__).resolve().parents[2]
-  env = load_env_file(repo_root / ".runtime" / "tunnels.env")
-  run_ts = args.run_ts or env["RUN_TS"]
+  run_ts = args.run_ts
   ready_path = repo_root / "_logs" / "raw" / f"{run_ts}_topology_ready.json"
   deadline = time.time() + args.timeout_seconds
 

@@ -13,7 +13,7 @@ from types import ModuleType
 
 
 INSTALL_HINT = (
-  "missing host dependency. Run ./start.sh or install requirements-host.txt "
+  "missing host dependency. Run ./start_e2e.sh or install requirements-host.txt "
   "into the Python environment."
 )
 

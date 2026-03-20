@@ -11,23 +11,20 @@ The intended steady-state topology is:
 
 ## Durable Memory
 Read these files before making non-trivial changes:
-- `PLANNING.md`: project spec, architecture, milestones, acceptance criteria, validation commands.
-- `IMPLEMENTATION.md`: builder runbook.
-- `REVIEW.md`: critic checklist.
-- `DOCUMENTATION.md`: live status, decisions, run instructions, and demo notes.
+- `IMPLEMENTATION.md`: architecture, operating rules, validation commands, critic checklist, and script inventory.
 - `_logs/YYMMDD_HHMMSS_*.md`: timestamped iteration summaries.
 
 ## Builder-Critic Loop
-1. Builder pass: read `PLANNING.md` and `IMPLEMENTATION.md`, then complete exactly one milestone at a time.
-2. Validation pass: run the milestone commands from `PLANNING.md`.
-3. Critic pass: use `REVIEW.md` to look for regressions, secret leaks, missing verification, and drift from the requested topology.
-4. Documentation pass: update `DOCUMENTATION.md` and append a timestamped summary under `_logs/`.
+1. Builder pass: read `IMPLEMENTATION.md` and complete one coherent change at a time.
+2. Validation pass: run the relevant commands listed in `IMPLEMENTATION.md`.
+3. Critic pass: use the checklist in `IMPLEMENTATION.md` to look for regressions, secret leaks, missing verification, and topology drift.
+4. Documentation pass: update `IMPLEMENTATION.md` when the supported architecture or workflow changes, and append a timestamped summary under `_logs/`.
 5. Only then move to the next milestone.
 
 ## Guardrails
 - `tunnels.json` contains live tunnel tokens. Never print, commit, or copy those tokens into tracked files.
-- Use `src/utils/prepare_runtime.py` to generate `.runtime/tunnels.env`. Treat `.runtime/` as disposable runtime state.
-- The tunnel-role mapping is fixed unless `PLANNING.md` is explicitly updated:
+- Use `src/utils/prepare_runtime.py` to generate `.runtime/dind.env` and `.runtime/public_hosts.json`. Treat `.runtime/` as disposable runtime state.
+- The tunnel-role mapping is fixed unless `IMPLEMENTATION.md` is explicitly updated:
   - tunnel 1: Neo4j HTTPS
   - tunnel 2: Neo4j Bolt/TCP
   - tunnel 3: PostgreSQL TCP
@@ -46,4 +43,4 @@ The project is only complete when all of the following hold:
   - Neo4j over Bolt through the host-side local TCP bridge
   - PostgreSQL over TCP through the host-side local TCP bridge
 - The top-level Compose service publishes no ports to the real machine.
-- `DOCUMENTATION.md` and the current timestamped `_logs/*.md` summary reflect the final verified state.
+- `IMPLEMENTATION.md` and the current timestamped `_logs/*.md` summary reflect the final verified state.

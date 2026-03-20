@@ -11,6 +11,7 @@ import argparse
 import sys
 import time
 from contextlib import ExitStack
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,11 +21,20 @@ if str(SRC_DIR) not in sys.path:
   sys.path.insert(0, str(SRC_DIR))
 
 from bridge.universal import UniversalBridgeServer
+from utils.demo_config import (
+  MANUAL_NEO4J_BOLT_FORWARD_PORT,
+  MANUAL_POSTGRES_FORWARD_PORT,
+  NEO4J_PASSWORD,
+  NEO4J_USER,
+  POSTGRES_DB,
+  POSTGRES_PASSWORD,
+  POSTGRES_USER,
+)
 from utils.local_bridges import (
   LOCALHOST,
   bridge_state,
   default_specs,
-  load_runtime_env,
+  load_public_hosts,
   repo_root,
   verify_neo4j_bridge,
   verify_postgres_bridge,
@@ -48,13 +58,13 @@ def parse_args() -> argparse.Namespace:
   parser.add_argument(
     "--postgres-port",
     type=int,
-    default=55432,
+    default=MANUAL_POSTGRES_FORWARD_PORT,
     help="Localhost port to expose for PostgreSQL clients.",
   )
   parser.add_argument(
     "--neo4j-port",
     type=int,
-    default=57687,
+    default=MANUAL_NEO4J_BOLT_FORWARD_PORT,
     help="Localhost port to expose for Neo4j Bolt clients.",
   )
   parser.add_argument(
@@ -82,7 +92,7 @@ def selected_specs(args: argparse.Namespace) -> list[Any]:
   return [spec for spec in specs if spec.service_key == args.service]
 
 
-def print_connection_instructions(env: dict[str, str], started_bridges: list[dict[str, Any]]) -> None:
+def print_connection_instructions(started_bridges: list[dict[str, Any]]) -> None:
   """Print operator-facing connection details."""
   print("started local Python bridges:")
   for bridge in started_bridges:
@@ -98,23 +108,22 @@ def print_connection_instructions(env: dict[str, str], started_bridges: list[dic
     print("postgres client settings:")
     print(f"- host: {LOCALHOST}")
     print(f"- port: {postgres_port}")
-    print(f"- database: {env['POSTGRES_DB']}")
-    print(f"- user: {env['POSTGRES_USER']}")
-    print(f"- password: {env['POSTGRES_PASSWORD']}")
+    print(f"- database: {POSTGRES_DB}")
+    print(f"- user: {POSTGRES_USER}")
+    print(f"- password: {POSTGRES_PASSWORD}")
     print("- ssl mode: disable")
 
   if "neo4j" in started_keys:
     neo4j_port = next(item["local_port"] for item in started_bridges if item["service_key"] == "neo4j")
     print("neo4j bolt client settings:")
     print(f"- uri: bolt://{LOCALHOST}:{neo4j_port}")
-    print(f"- username: {env['NEO4J_USER']}")
-    print(f"- password: {env['NEO4J_PASSWORD']}")
+    print(f"- username: {NEO4J_USER}")
+    print(f"- password: {NEO4J_PASSWORD}")
     print("- encryption: off for the localhost leg")
 
 
 def maybe_verify(
   args: argparse.Namespace,
-  env: dict[str, str],
   started_bridges: list[dict[str, Any]],
 ) -> dict[str, Any]:
   """Optionally verify the started bridges with real driver calls."""
@@ -124,9 +133,9 @@ def maybe_verify(
 
   for bridge in started_bridges:
     if bridge["service_key"] == "postgres":
-      verification["postgres"] = verify_postgres_bridge(bridge["local_port"], env)
+      verification["postgres"] = verify_postgres_bridge(bridge["local_port"])
     if bridge["service_key"] == "neo4j":
-      verification["neo4j"] = verify_neo4j_bridge(bridge["local_port"], env)
+      verification["neo4j"] = verify_neo4j_bridge(bridge["local_port"])
 
   print("verification results:")
   for service_key, result in verification.items():
@@ -138,8 +147,8 @@ def maybe_verify(
 def main() -> int:
   """Start the requested bridges and keep them alive."""
   args = parse_args()
-  env = load_runtime_env()
-  run_ts = args.run_ts or env["RUN_TS"]
+  public_hosts = load_public_hosts()
+  run_ts = args.run_ts or f"manual_{datetime.now().strftime('%y%m%d_%H%M%S')}"
   specs = selected_specs(args)
   raw_logs_dir = repo_root() / "_logs" / "raw"
   started_bridges: list[dict[str, Any]] = []
@@ -150,17 +159,17 @@ def main() -> int:
       for spec in specs:
         server = UniversalBridgeServer(
           name=f"{spec.service_key}_manual_bridge",
-          hostname=env[spec.public_host_env_key],
+          hostname=public_hosts[spec.public_host_key],
           local_port=spec.local_port,
           run_ts=run_ts,
           raw_logs_dir=raw_logs_dir,
         )
         stack.enter_context(server)
         servers.append(server)
-        started_bridges.append(bridge_state(spec, env))
+        started_bridges.append(bridge_state(spec, public_hosts))
 
-      verification = maybe_verify(args, env, started_bridges)
-      print_connection_instructions(env, started_bridges)
+      maybe_verify(args, started_bridges)
+      print_connection_instructions(started_bridges)
 
       if args.duration_seconds is not None:
         deadline = time.monotonic() + args.duration_seconds

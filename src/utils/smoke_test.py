@@ -13,9 +13,6 @@ SRC_DIR = Path(__file__).resolve().parents[1]
 if str(SRC_DIR) not in sys.path:
   sys.path.insert(0, str(SRC_DIR))
 
-from utils.envfiles import load_env_file
-
-
 def parse_args() -> argparse.Namespace:
   """Parse CLI arguments for the smoke test.
 
@@ -25,7 +22,7 @@ def parse_args() -> argparse.Namespace:
     Parsed CLI options.
   """
   parser = argparse.ArgumentParser(description="Validate the latest host-side experiment report.")
-  parser.add_argument("--run-ts", help="specific run identifier to validate")
+  parser.add_argument("--run-ts", required=True, help="specific run identifier to validate")
   return parser.parse_args()
 
 
@@ -39,12 +36,7 @@ def main() -> int:
   """
   args = parse_args()
   repo_root = Path(__file__).resolve().parents[2]
-  env_path = repo_root / ".runtime" / "tunnels.env"
-  if not env_path.exists():
-    raise SystemExit("missing .runtime/tunnels.env; run python3 src/utils/prepare_runtime.py first")
-
-  env = load_env_file(env_path)
-  run_ts = args.run_ts or env["RUN_TS"]
+  run_ts = args.run_ts
   report_path = repo_root / "_logs" / "raw" / f"{run_ts}_experiment_report.json"
   deadline = time.time() + 300
   last_error = "no report observed"

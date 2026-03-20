@@ -7,15 +7,15 @@ from pathlib import Path
 from typing import Any
 
 
-def load_topology_snapshot(path: Path, env: dict[str, str]) -> dict[str, Any]:
+def load_topology_snapshot(path: Path, public_hosts: dict[str, str]) -> dict[str, Any]:
   """Load the orchestrator's aggregated topology snapshot.
 
   Parameters
   ----------
   path:
     Path to `_logs/raw/<RUN_TS>_topology_ready.json`.
-  env:
-    Parsed runtime env file.
+  public_hosts:
+    Host-side public hostname mapping.
 
   Returns
   -------
@@ -36,9 +36,9 @@ def load_topology_snapshot(path: Path, env: dict[str, str]) -> dict[str, Any]:
       "postgres_tcp": "127.0.0.1:15432",
     },
     "public_hosts": {
-      "neo4j_https": env["NEO4J_HTTP_PUBLIC_HOST"],
-      "neo4j_bolt": env["NEO4J_BOLT_PUBLIC_HOST"],
-      "postgres_tcp": env["POSTGRES_PUBLIC_HOST"],
+      "neo4j_https": public_hosts["neo4j_http"],
+      "neo4j_bolt": public_hosts["neo4j_bolt"],
+      "postgres_tcp": public_hosts["postgres"],
     },
   }
 

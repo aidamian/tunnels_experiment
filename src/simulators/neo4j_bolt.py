@@ -5,22 +5,23 @@ from __future__ import annotations
 from typing import Any
 
 from bridge.universal import LOCALHOST
+from utils.demo_config import NEO4J_PASSWORD, NEO4J_USER
 from utils.dependencies import get_graph_database_class
 
 
-def run_neo4j_bolt_cycle(env: dict[str, str], run_id: str, cycle: int, proof: str) -> dict[str, Any]:
+def run_neo4j_bolt_cycle(run_id: str, cycle: int, proof: str, local_port: int) -> dict[str, Any]:
   """Run one Neo4j Bolt write/read proof cycle.
 
   Parameters
   ----------
-  env:
-    Parsed runtime environment.
   run_id:
     Current run identifier.
   cycle:
     Current proof cycle number.
   proof:
     Unique proof string for this cycle.
+  local_port:
+    Localhost TCP port exposed by the host-side Neo4j Bolt bridge.
 
   Returns
   -------
@@ -31,12 +32,11 @@ def run_neo4j_bolt_cycle(env: dict[str, str], run_id: str, cycle: int, proof: st
 
   # Simulate an external Bolt-capable application by connecting to the local
   # bridge port on the real machine and running normal Neo4j driver operations.
-  port = int(env["HOST_NEO4J_BOLT_FORWARD_PORT"])
   event_id = f"{run_id}-cycle-{cycle}"
 
   driver = GraphDatabase.driver(
-    f"bolt://{LOCALHOST}:{port}",
-    auth=(env["NEO4J_USER"], env["NEO4J_PASSWORD"]),
+    f"bolt://{LOCALHOST}:{local_port}",
+    auth=(NEO4J_USER, NEO4J_PASSWORD),
   )
   try:
     with driver.session() as session:

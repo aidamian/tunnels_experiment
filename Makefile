@@ -1,6 +1,6 @@
-RUNTIME_ENV := .runtime/tunnels.env
+RUNTIME_ENV := .runtime/dind.env
 
-.PHONY: prepare-runtime config up down start smoke
+.PHONY: prepare-runtime config up down start continuous smoke
 
 prepare-runtime:
 	python3 src/utils/prepare_runtime.py
@@ -15,7 +15,10 @@ down:
 	docker compose down --remove-orphans --volumes
 
 start:
-	./start.sh
+	./start_e2e.sh
+
+continuous:
+	./start_host.sh
 
 smoke:
-	python3 src/utils/smoke_test.py
+	@echo "usage: python3 src/utils/smoke_test.py --run-ts <RUN_TS>"

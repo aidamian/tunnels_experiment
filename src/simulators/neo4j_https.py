@@ -5,18 +5,19 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from utils.demo_config import NEO4J_PASSWORD, NEO4J_USER
 from utils.dependencies import get_requests_module
 
 
-def run_neo4j_https_read(env: dict[str, str], run_id: str) -> dict[str, Any]:
+def run_neo4j_https_read(run_id: str, public_http_host: str) -> dict[str, Any]:
   """Read the run's Neo4j graph proof through the public HTTPS endpoint.
 
   Parameters
   ----------
-  env:
-    Parsed runtime environment.
   run_id:
     Current run identifier used to select experiment data.
+  public_http_host:
+    Public Neo4j HTTPS hostname.
 
   Returns
   -------
@@ -27,10 +28,10 @@ def run_neo4j_https_read(env: dict[str, str], run_id: str) -> dict[str, Any]:
 
   # This path does not need a local bridge because Neo4j's HTTP API is exposed
   # as a normal HTTPS application at the Cloudflare edge.
-  endpoint = f"https://{env['NEO4J_HTTP_PUBLIC_HOST']}/db/neo4j/tx/commit"
+  endpoint = f"https://{public_http_host}/db/neo4j/tx/commit"
   response = requests.post(
     endpoint,
-    auth=(env["NEO4J_USER"], env["NEO4J_PASSWORD"]),
+    auth=(NEO4J_USER, NEO4J_PASSWORD),
     headers={"User-Agent": "tunnels-experiment-host-client/2.0"},
     json={
       "statements": [

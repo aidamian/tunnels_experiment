@@ -5,22 +5,23 @@ from __future__ import annotations
 from typing import Any
 
 from bridge.universal import LOCALHOST
+from utils.demo_config import POSTGRES_DB, POSTGRES_PASSWORD, POSTGRES_USER
 from utils.dependencies import get_psycopg_module
 
 
-def run_postgres_cycle(env: dict[str, str], run_id: str, cycle: int, proof: str) -> dict[str, Any]:
+def run_postgres_cycle(run_id: str, cycle: int, proof: str, local_port: int) -> dict[str, Any]:
   """Run one PostgreSQL write/read proof cycle.
 
   Parameters
   ----------
-  env:
-    Parsed runtime environment.
   run_id:
     Current run identifier.
   cycle:
     Current proof cycle number.
   proof:
     Unique proof string for this cycle.
+  local_port:
+    Localhost TCP port exposed by the host-side PostgreSQL bridge.
 
   Returns
   -------
@@ -31,13 +32,12 @@ def run_postgres_cycle(env: dict[str, str], run_id: str, cycle: int, proof: str)
 
   # Simulate an external PostgreSQL client, such as DBeaver, by connecting to
   # the host-side local TCP bridge and performing a real write/read cycle.
-  port = int(env["HOST_POSTGRES_FORWARD_PORT"])
   with psycopg.connect(
     host=LOCALHOST,
-    port=port,
-    dbname=env["POSTGRES_DB"],
-    user=env["POSTGRES_USER"],
-    password=env["POSTGRES_PASSWORD"],
+    port=local_port,
+    dbname=POSTGRES_DB,
+    user=POSTGRES_USER,
+    password=POSTGRES_PASSWORD,
     connect_timeout=10,
     sslmode="disable",
   ) as connection:

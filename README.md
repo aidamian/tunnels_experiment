@@ -13,7 +13,8 @@ The critical rule is simple: the top-level DinD host container publishes no serv
 ```text
 Real Machine
 |
-|-- start.sh
+|-- start_e2e.sh
+|-- start_host.sh
 |-- src/experiment_runner.py
 |    |-- HTTPS -> Neo4j public hostname
 |    |-- local TCP bridge -> wss://Neo4j Bolt public hostname
@@ -48,7 +49,7 @@ The DinD host image is deliberately self-contained:
 The host-side Python code now has a single flat source tree at repo-root `src/`:
 
 - `src/utils/`
-  - runtime prep, report helpers, Docker polling, and the manual local-bridge CLI
+  - runtime prep, report helpers, Docker polling, shared config, and the manual local-bridge CLI
 - `src/bridge/`
   - the universal TCP-to-WebSocket bridge used for any published TCP service
 - `src/simulators/`
@@ -83,6 +84,19 @@ The short answer to "aren't Cloudflare tunnels HTTPS by definition?" is no.
 So the public hostname is a Cloudflare HTTPS/TLS endpoint, but the payload inside that connection can still be a raw TCP application such as Bolt or PostgreSQL.
 
 This repository makes that transport explicit by implementing the client-side bridge in Python, so local tools can work without any client-side `cloudflared` dependency.
+
+## Runtime File Separation
+
+Runtime state is split deliberately:
+
+- `.runtime/dind.env`
+  - used by `docker compose` and the DinD container
+  - contains `RUN_TS`, demo credentials, public hosts, and tunnel tokens
+- `.runtime/public_hosts.json`
+  - used by host-side Python clients and bridges
+  - contains only the public FQDNs needed by the client side
+
+That split keeps the host/client side from reading the DinD tunnel-token file.
 
 ## Direct DBeaver And Bolt Access With The Python Bridge
 
@@ -159,11 +173,11 @@ That means:
 
 So both forms would still avoid publishing directly to the real machine, but the loopback form is stricter and cleaner. It follows least exposure: `cloudflared` can reach the database, while the database is not unnecessarily listening on the DinD host container's other interfaces.
 
-## What `start.sh` Does
+## What `start_e2e.sh` Does
 
-`start.sh` is the full experiment entrypoint. By default it:
+`start_e2e.sh` is the full experiment entrypoint. By default it:
 
-1. generates `.runtime/tunnels.env`;
+1. generates `.runtime/dind.env` and `.runtime/public_hosts.json`;
 2. validates the Compose file;
 3. builds and starts `dind-host-container`;
 4. waits for the DinD-host topology to become ready;
@@ -177,32 +191,49 @@ So both forms would still avoid publishing directly to the real machine, but the
 9. writes `_logs/YYMMDD_HHMMSS_summary.md`;
 10. stops the Compose stack unless `--keep-up` is used.
 
+## What `start_host.sh` Does
+
+`start_host.sh` is the host-testing entrypoint. It:
+
+1. generates the separated runtime files;
+2. validates and starts the DinD stack;
+3. waits for topology readiness;
+4. starts the Python bridge in the foreground;
+5. keeps the stack and the bridge alive until `Ctrl+C`;
+6. stops both on exit.
+
+This is the script to use when you want DBeaver on the real machine to connect through the Python bridge without also running the automated proof workload.
+
 ## Quick Start
 
 ```bash
-./start.sh
+./start_e2e.sh
 ```
 
-## Manual Verification
+## Host Testing
 
-If you want the stack to stay up after the automated run:
+For direct host-side testing with DBeaver or another Bolt/PostgreSQL client:
 
 ```bash
-./start.sh --keep-up --duration-seconds 120
+./start_host.sh
 ```
 
-While that run is active:
+That command keeps the stack and the foreground Python bridge running until you press `Ctrl+C`.
+
+If you want the bridge to run immediate real PostgreSQL and Neo4j queries before it settles into the foreground:
+
+```bash
+./start_host.sh --verify
+```
 
 1. PostgreSQL / DBeaver pattern
-  - Start `.venv/bin/python src/utils/start_local_bridges.py --service postgres` in another terminal if you want a manual bridge dedicated to DBeaver.
-  - The automated Python bridge also binds a local PostgreSQL port on `127.0.0.1` during the experiment run.
+  - The foreground bridge exposes a local PostgreSQL port on `127.0.0.1:55432` by default.
   - DBeaver can connect to that local port exactly like a normal PostgreSQL server.
-  - Use the same database name, username, and password shown in `.runtime/tunnels.env`.
+  - Use database `tunnel_demo`, user `tunnel_demo`, password `tunnel-demo-postgres`, and disable SSL.
   - Do not point DBeaver directly at the public Cloudflare hostname expecting a native PostgreSQL socket; the public side is a WebSocket carrier, so the local bridge is the supported path in this repository.
 
 2. Neo4j Bolt pattern
-   - Start `.venv/bin/python src/utils/start_local_bridges.py --service neo4j` in another terminal if you want a manual bridge dedicated to Bolt clients.
-   - The automated Python bridge also binds a local Bolt port on `127.0.0.1` during the experiment run.
+   - The foreground bridge exposes a local Bolt port on `127.0.0.1:57687` by default.
    - Any Bolt-capable application can connect to that local port with the same Neo4j credentials.
    - Do not point a Bolt driver directly at the public Cloudflare hostname; the Python bridge layer is required.
 
