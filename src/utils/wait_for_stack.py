@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
 
-from tunnels_experiment.utils.docker_runtime import docker_status
-from tunnels_experiment.utils.envfiles import load_env_file
+
+SRC_DIR = Path(__file__).resolve().parents[1]
+if str(SRC_DIR) not in sys.path:
+  sys.path.insert(0, str(SRC_DIR))
+
+from utils.docker_runtime import docker_status
+from utils.envfiles import load_env_file
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,7 +42,7 @@ def main() -> int:
     Zero when the topology marker reports readiness, otherwise one.
   """
   args = parse_args()
-  repo_root = Path(__file__).resolve().parents[4]
+  repo_root = Path(__file__).resolve().parents[2]
   env = load_env_file(repo_root / ".runtime" / "tunnels.env")
   run_ts = args.run_ts or env["RUN_TS"]
   ready_path = repo_root / "_logs" / "raw" / f"{run_ts}_topology_ready.json"
@@ -60,3 +66,7 @@ def main() -> int:
 
   print("timed out waiting for the DinD-host topology", flush=True)
   return 1
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())

@@ -14,14 +14,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from tunnels_experiment.bridges.published_tcp import LOCALHOST, PublishedTcpBridgeServer
-from tunnels_experiment.checks.neo4j_bolt_tunnel import run_neo4j_bolt_cycle
-from tunnels_experiment.checks.neo4j_https import run_neo4j_https_read
-from tunnels_experiment.checks.postgres_tunnel import run_postgres_cycle
-from tunnels_experiment.utils.docker_runtime import top_level_published_ports
-from tunnels_experiment.utils.envfiles import load_env_file
-from tunnels_experiment.utils.files import write_json_file
-from tunnels_experiment.utils.topology import load_topology_snapshot
+from bridge.universal import LOCALHOST, UniversalBridgeServer
+from simulators.neo4j_bolt import run_neo4j_bolt_cycle
+from simulators.neo4j_https import run_neo4j_https_read
+from simulators.postgres import run_postgres_cycle
+from utils.docker_runtime import top_level_published_ports
+from utils.envfiles import load_env_file
+from utils.files import write_json_file
+from utils.topology import load_topology_snapshot
 
 
 def now_utc() -> str:
@@ -59,9 +59,9 @@ def main() -> int:
     Zero when all proof paths succeeded, otherwise one.
   """
   args = parse_args()
-  # `runner.py` lives under `scripts/src/tunnels_experiment/experiment/`, so
-  # repository root is four levels up from the file's parent chain.
-  repo_root = Path(__file__).resolve().parents[4]
+  # `experiment_runner.py` lives under `src/`, so repository root is one level
+  # up from the file.
+  repo_root = Path(__file__).resolve().parents[1]
   env = load_env_file(repo_root / ".runtime" / "tunnels.env")
   run_id = args.run_ts or env["RUN_TS"]
   duration_seconds = args.duration_seconds or int(env["EXPERIMENT_DURATION_SECONDS"])
@@ -86,13 +86,13 @@ def main() -> int:
     # Start dedicated local TCP bridge listeners before the proof cycles begin.
     # From the point of view of local clients, these look like normal local
     # sockets even though the public hop uses Cloudflare's WebSocket carrier.
-    with PublishedTcpBridgeServer(
+    with UniversalBridgeServer(
       name="postgres_client_bridge",
       hostname=env["POSTGRES_PUBLIC_HOST"],
       local_port=int(env["HOST_POSTGRES_FORWARD_PORT"]),
       run_ts=run_id,
       raw_logs_dir=raw_logs_dir,
-    ) as postgres_bridge, PublishedTcpBridgeServer(
+    ) as postgres_bridge, UniversalBridgeServer(
       name="neo4j_bolt_client_bridge",
       hostname=env["NEO4J_BOLT_PUBLIC_HOST"],
       local_port=int(env["HOST_NEO4J_BOLT_FORWARD_PORT"]),
@@ -184,3 +184,7 @@ def main() -> int:
   write_json_file(report_path, report)
   print(json.dumps(report, indent=2), flush=True)
   return 0 if report["all_ok"] else 1
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())

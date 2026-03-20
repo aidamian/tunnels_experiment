@@ -54,7 +54,7 @@ Build a reproducible demo showing that:
    - writes a tracked `_logs/YYMMDD_HHMMSS_summary.md`;
    - stops the stack unless explicitly told to keep it running.
 
-2. `scripts/sre/run_experiment.py`
+2. `src/experiment_runner.py`
    - primary operator entrypoint that runs directly on the real machine;
    - starts two host-side local TCP bridge listeners on `127.0.0.1`;
    - bridges those listeners to the public Bolt and PostgreSQL tunnel hostnames over WebSocket;
@@ -62,12 +62,10 @@ Build a reproducible demo showing that:
      - a DBeaver-style PostgreSQL client;
      - an external Bolt client;
      - a direct HTTPS Neo4j API consumer.
-   - compatibility wrapper remains available at `scripts/run_experiment.py`.
-
-3. `scripts/sre/start_cloudflared_forwards.py`
-   - optional operator helper for client-side `cloudflared access tcp` forwards;
-   - exposes plain localhost ports for DBeaver and Neo4j Bolt clients without using the repository's custom Python bridge;
-   - keeps the Cloudflare client-side transport aligned with the official arbitrary-TCP pattern.
+3. `src/utils/start_local_bridges.py`
+   - optional operator helper for manual localhost bridge ports;
+   - exposes plain localhost ports for DBeaver and Neo4j Bolt clients using only the repository's Python bridge;
+   - connects those local sockets directly to the public tunnel FQDNs over WebSocket.
 
 ### Top-level Compose service
 1. `dind-host-container`
@@ -106,14 +104,14 @@ Build a reproducible demo showing that:
 4. Tunnel 4 -> reserved and unused by the automated experiment
 
 ## Demo Flow
-1. `python3 scripts/sre/prepare_runtime.py`
+1. `python3 src/utils/prepare_runtime.py`
 2. `docker compose up --build -d`
 3. `dind-host-container` starts its in-image entrypoint and private Docker daemon.
 4. The in-image orchestrator starts:
    - `neo4j-demo`;
    - `postgres-demo`;
    - three outbound `cloudflared tunnel run` processes through the per-service scripts.
-5. `scripts/sre/run_experiment.py` starts two host-side local TCP bridges on the real machine:
+5. `src/experiment_runner.py` starts two host-side local TCP bridges on the real machine:
    - PostgreSQL bridge for the DBeaver-style flow;
    - Neo4j Bolt bridge for the external Bolt-app flow.
 6. The host script performs about three timed cycles over about 30 seconds:
@@ -126,20 +124,20 @@ Build a reproducible demo showing that:
    - logs and reports were written to the expected locations.
 
 ### Optional direct-client path
-1. `scripts/sre/start_cloudflared_forwards.py` starts client-side `cloudflared access tcp` helper containers on the real machine.
+1. `src/utils/start_local_bridges.py` starts manual localhost bridge ports on the real machine.
 2. DBeaver connects to `127.0.0.1:55432` as if PostgreSQL were local.
 3. The Neo4j Python driver connects to `bolt://127.0.0.1:57687` as if Bolt were local.
-4. `scripts/sre/stop_cloudflared_forwards.py` removes those helper containers when the operator is done.
+4. The operator stops the helper with `Ctrl+C` when manual access is no longer needed.
 
 ## Milestones
 ### Milestone 1: Runtime and logging scaffolding
 Acceptance criteria:
-- `scripts/sre/prepare_runtime.py` generates `.runtime/tunnels.env` without leaking secrets.
+- `src/utils/prepare_runtime.py` generates `.runtime/tunnels.env` without leaking secrets.
 - `_logs/raw/` exists for runtime artifacts.
 - `_logs/RUNLOG.md` exists for appended end-to-end summaries.
 
 Validation:
-- `python3 scripts/sre/prepare_runtime.py`
+- `python3 src/utils/prepare_runtime.py`
 
 ### Milestone 2: DinD host orchestration
 Acceptance criteria:
@@ -153,7 +151,7 @@ Validation:
 
 ### Milestone 3: Host-side client simulation
 Acceptance criteria:
-- `scripts/sre/run_experiment.py` runs on the real machine.
+- `src/experiment_runner.py` runs on the real machine.
 - It uses the three public tunnel hostnames from `.runtime/tunnels.env`.
 - It simulates:
   - DBeaver-style PostgreSQL access through a host-side local TCP bridge;
@@ -162,21 +160,21 @@ Acceptance criteria:
 - It writes a machine-readable report under `_logs/raw/`.
 
 Validation:
-- `python3 scripts/sre/run_experiment.py --help`
+- `python3 src/experiment_runner.py --help`
 
 ### Milestone 4: End-to-end verification and documentation
 Acceptance criteria:
 - `./start.sh` runs the full demo in one command.
-- `python3 scripts/sre/smoke_test.py` passes against the generated report.
+- `python3 src/utils/smoke_test.py` passes against the generated report.
 - `README.md`, `DOCUMENTATION.md`, `_logs/RUNLOG.md`, and the timestamped `_logs/*_summary.md` reflect the verified topology.
 
 Validation:
 - `./start.sh`
-- `python3 scripts/sre/smoke_test.py`
+- `python3 src/utils/smoke_test.py`
 
 ## Success Criteria
 The demo is successful when all of the following hold:
-- `python3 scripts/sre/prepare_runtime.py` succeeds.
+- `python3 src/utils/prepare_runtime.py` succeeds.
 - `docker compose up --build -d` brings up only `dind-host-container`.
 - `docker compose ps` shows no published ports for `dind-host-container`.
 - Neo4j HTTPS works through tunnel 1.
@@ -199,5 +197,4 @@ The demo is successful when all of the following hold:
 ## Sources
 - Cloudflare Tunnel overview: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/
 - Cloudflare published application protocols: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/protocols/
-- Cloudflare arbitrary TCP with client-side `cloudflared`: https://developers.cloudflare.com/cloudflare-one/access-controls/applications/non-http/cloudflared-authentication/arbitrary-tcp/
 - PostgreSQL official image reference: https://hub.docker.com/_/postgres

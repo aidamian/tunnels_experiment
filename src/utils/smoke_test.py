@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
 
-from tunnels_experiment.utils.envfiles import load_env_file
+
+SRC_DIR = Path(__file__).resolve().parents[1]
+if str(SRC_DIR) not in sys.path:
+  sys.path.insert(0, str(SRC_DIR))
+
+from utils.envfiles import load_env_file
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,10 +38,10 @@ def main() -> int:
     Zero when the report satisfies the expected proof checks, otherwise one.
   """
   args = parse_args()
-  repo_root = Path(__file__).resolve().parents[4]
+  repo_root = Path(__file__).resolve().parents[2]
   env_path = repo_root / ".runtime" / "tunnels.env"
   if not env_path.exists():
-    raise SystemExit("missing .runtime/tunnels.env; run python3 scripts/sre/prepare_runtime.py first")
+    raise SystemExit("missing .runtime/tunnels.env; run python3 src/utils/prepare_runtime.py first")
 
   env = load_env_file(env_path)
   run_ts = args.run_ts or env["RUN_TS"]
@@ -85,3 +91,7 @@ def main() -> int:
   print("smoke test failed", flush=True)
   print(last_error, flush=True)
   return 1
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())

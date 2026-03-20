@@ -73,3 +73,39 @@ End-to-end experiment runs are appended below.
 - PostgreSQL rows for run: 3
 - Neo4j events for run: 3
 - Raw report: `_logs/raw/260320_004646_experiment_report.json`
+## 2026-03-20T19:37:58.060465 | run 260320_193659
+- Result: PASS
+- Cycles completed: 3
+- Top-level published ports: none
+- Neo4j HTTPS host: c74d8a4e03e6.ratio1.link
+- Neo4j Bolt host: 99c7e7089d1b.ratio1.link
+- PostgreSQL host: 60bf15690490.ratio1.link
+- Local PostgreSQL forward: 127.0.0.1:15432
+- Local Neo4j Bolt forward: 127.0.0.1:17687
+- PostgreSQL rows for run: 3
+- Neo4j events for run: 3
+- Raw report: `_logs/raw/260320_193659_experiment_report.json`
+## 2026-03-20T20:08:57.212709 | run 260320_200738
+- Result: PASS
+- Cycles completed: 3
+- Top-level published ports: none
+- Neo4j HTTPS host: c74d8a4e03e6.ratio1.link
+- Neo4j Bolt host: 99c7e7089d1b.ratio1.link
+- PostgreSQL host: 60bf15690490.ratio1.link
+- Local PostgreSQL forward: 127.0.0.1:15432
+- Local Neo4j Bolt forward: 127.0.0.1:17687
+- PostgreSQL rows for run: 3
+- Neo4j events for run: 3
+- Raw report: `_logs/raw/260320_200738_experiment_report.json`
+## 2026-03-20T20:15:41.412305 | run 260320_201433
+- Result: PASS
+- Cycles completed: 3
+- Top-level published ports: none
+- Neo4j HTTPS host: c74d8a4e03e6.ratio1.link
+- Neo4j Bolt host: 99c7e7089d1b.ratio1.link
+- PostgreSQL host: 60bf15690490.ratio1.link
+- Local PostgreSQL forward: 127.0.0.1:15432
+- Local Neo4j Bolt forward: 127.0.0.1:17687
+- PostgreSQL rows for run: 3
+- Neo4j events for run: 3
+- Raw report: `_logs/raw/260320_201433_experiment_report.json`

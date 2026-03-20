@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from tunnels_experiment.utils.dependencies import get_requests_module
+from utils.dependencies import get_requests_module
 
 
 def run_neo4j_https_read(env: dict[str, str], run_id: str) -> dict[str, Any]:

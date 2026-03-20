@@ -7,7 +7,7 @@ The intended steady-state topology is:
 - `dind-host-container`: the single top-level Docker-in-Docker (DinD) container.
 - `neo4j-demo`: a direct child container started by the DinD host and exposed through two tunnels: HTTPS and Bolt/TCP.
 - `postgres-demo`: a direct child container started by the DinD host and exposed through one TCP tunnel.
-- `scripts/run_experiment.py`: the host-side Python consumer that reaches those services through the public tunnel hostnames and host-side local TCP bridges.
+- `src/experiment_runner.py`: the host-side Python consumer that reaches those services through the public tunnel hostnames and host-side local TCP bridges.
 
 ## Durable Memory
 Read these files before making non-trivial changes:
@@ -26,7 +26,7 @@ Read these files before making non-trivial changes:
 
 ## Guardrails
 - `tunnels.json` contains live tunnel tokens. Never print, commit, or copy those tokens into tracked files.
-- Use `scripts/prepare_runtime.py` to generate `.runtime/tunnels.env`. Treat `.runtime/` as disposable runtime state.
+- Use `src/utils/prepare_runtime.py` to generate `.runtime/tunnels.env`. Treat `.runtime/` as disposable runtime state.
 - The tunnel-role mapping is fixed unless `PLANNING.md` is explicitly updated:
   - tunnel 1: Neo4j HTTPS
   - tunnel 2: Neo4j Bolt/TCP
@@ -39,7 +39,7 @@ Read these files before making non-trivial changes:
 
 ## Definition Of Done
 The project is only complete when all of the following hold:
-- `python3 scripts/prepare_runtime.py` succeeds against the local `tunnels.json`.
+- `python3 src/utils/prepare_runtime.py` succeeds against the local `tunnels.json`.
 - `docker compose up --build -d` brings up the single top-level `dind-host-container`.
 - The host-side experiment can prove all of these paths work:
   - Neo4j over public HTTPS

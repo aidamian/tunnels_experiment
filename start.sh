@@ -117,10 +117,9 @@ ensure_python_env() {
 # stable and easy to understand from the logs.
 cd "${repo_root}"
 
-# Step 1: create `.runtime/tunnels.env` and the per-run timestamp. The primary
-# SRE entrypoints now live under `scripts/sre/`, while `scripts/*.py` remains as
-# a compatibility layer for older commands and documentation references.
-run_step "preparing runtime" "${raw_logs_dir}/prepare_runtime.log" python3 scripts/sre/prepare_runtime.py
+# Step 1: create `.runtime/tunnels.env` and the per-run timestamp. The
+# host-side Python code now lives directly under `src/`.
+run_step "preparing runtime" "${raw_logs_dir}/prepare_runtime.log" python3 src/utils/prepare_runtime.py
 source "${repo_root}/.runtime/tunnels.env"
 run_ts="${RUN_TS}"
 
@@ -134,24 +133,23 @@ stack_started="true"
 
 # Step 4: wait until the in-container orchestrator has started every service
 # and written the topology_ready.json marker for this run.
-run_step "waiting for the DinD-host topology" "${raw_logs_dir}/${run_ts}_wait_for_stack.log" python3 scripts/sre/wait_for_stack.py --run-ts "${run_ts}"
+run_step "waiting for the DinD-host topology" "${raw_logs_dir}/${run_ts}_wait_for_stack.log" python3 src/utils/wait_for_stack.py --run-ts "${run_ts}"
 
-# Run the primary experiment entrypoint under `scripts/sre/`. The flat
-# `scripts/run_experiment.py` wrapper still exists, but this path reflects the
-# new directory layout more clearly in logs.
-experiment_cmd=("${venv_dir}/bin/python" "${repo_root}/scripts/sre/run_experiment.py" "--run-ts" "${run_ts}")
+# Run the primary experiment entrypoint directly from the simplified source
+# tree so the logs match the actual code layout.
+experiment_cmd=("${venv_dir}/bin/python" "${repo_root}/src/experiment_runner.py" "--run-ts" "${run_ts}")
 if [[ -n "${duration_seconds}" ]]; then
   experiment_cmd+=("--duration-seconds" "${duration_seconds}")
 fi
 
 # Step 5: run the host-side proof workload and validate the resulting report.
 run_step "running the host-side experiment" "${raw_logs_dir}/${run_ts}_experiment_console.log" "${experiment_cmd[@]}"
-run_step "running the smoke test" "${raw_logs_dir}/${run_ts}_smoke_test.log" python3 scripts/sre/smoke_test.py --run-ts "${run_ts}"
+run_step "running the smoke test" "${raw_logs_dir}/${run_ts}_smoke_test.log" python3 src/utils/smoke_test.py --run-ts "${run_ts}"
 
 # Step 6: capture supporting evidence and update the tracked markdown logs.
 run_step "capturing compose status" "${raw_logs_dir}/${run_ts}_compose_ps.log" docker compose ps
 run_step "capturing top-level container logs" "${raw_logs_dir}/${run_ts}_compose_logs.log" docker compose logs --no-color dind-host-container
-run_step "appending run log" "${raw_logs_dir}/${run_ts}_append_runlog.log" python3 scripts/sre/append_runlog.py --run-ts "${run_ts}"
-run_step "writing iteration summary" "${raw_logs_dir}/${run_ts}_write_summary.log" python3 scripts/sre/write_summary.py --run-ts "${run_ts}"
+run_step "appending run log" "${raw_logs_dir}/${run_ts}_append_runlog.log" python3 src/utils/append_runlog.py --run-ts "${run_ts}"
+run_step "writing iteration summary" "${raw_logs_dir}/${run_ts}_write_summary.log" python3 src/utils/write_summary.py --run-ts "${run_ts}"
 
 log "experiment ${run_ts} completed successfully"

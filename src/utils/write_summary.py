@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
-from tunnels_experiment.utils.envfiles import load_env_file
+
+SRC_DIR = Path(__file__).resolve().parents[1]
+if str(SRC_DIR) not in sys.path:
+  sys.path.insert(0, str(SRC_DIR))
+
+from utils.envfiles import load_env_file
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,7 +37,7 @@ def main() -> int:
     Zero when the summary file was written successfully.
   """
   args = parse_args()
-  repo_root = Path(__file__).resolve().parents[4]
+  repo_root = Path(__file__).resolve().parents[2]
   env = load_env_file(repo_root / ".runtime" / "tunnels.env")
   run_ts = args.run_ts or env["RUN_TS"]
   report_path = repo_root / "_logs" / "raw" / f"{run_ts}_experiment_report.json"
@@ -66,3 +72,7 @@ def main() -> int:
   summary_path.write_text(summary + "\n", encoding="utf-8")
   print(f"wrote {summary_path}")
   return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())

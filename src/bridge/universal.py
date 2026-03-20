@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from tunnels_experiment.utils.dependencies import get_websocket_module
+from utils.dependencies import get_websocket_module
 
 
 LOCALHOST = "127.0.0.1"
@@ -128,7 +128,7 @@ def ensure_port_available(port: int) -> None:
 
 
 @dataclass
-class PublishedTcpBridgeServer:
+class UniversalBridgeServer:
   """Expose a local TCP listener backed by a Cloudflare TCP application.
 
   Attributes
@@ -174,12 +174,12 @@ class PublishedTcpBridgeServer:
     with self.log_path.open("a", encoding="utf-8") as handle:
       handle.write(f"[{timestamp}] {message}\n")
 
-  def __enter__(self) -> "PublishedTcpBridgeServer":
+  def __enter__(self) -> "UniversalBridgeServer":
     """Start the local TCP listener and background accept loop.
 
     Returns
     -------
-    PublishedTcpBridgeServer
+    UniversalBridgeServer
       Running bridge instance.
     """
     # Create the local listener before any connection attempts begin so callers

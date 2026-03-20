@@ -34,17 +34,17 @@ This file is the builder runbook. `PLANNING.md` is the architecture source of tr
    - Neo4j HTTPS read proof
 5. Verification and documentation
    - `start.sh`
-   - `scripts/sre/smoke_test.py`
-   - optional client-side `cloudflared access tcp` helpers for DBeaver and Bolt
+   - `src/utils/smoke_test.py`
+   - optional manual Python bridge helper for DBeaver and Bolt
    - `DOCUMENTATION.md`
    - `_logs/RUNLOG.md`
    - `_logs/YYMMDD_HHMMSS_summary.md`
 
 ## Validation Discipline
-- Run `python3 scripts/sre/prepare_runtime.py` before Compose commands.
+- Run `python3 src/utils/prepare_runtime.py` before Compose commands.
 - Use `docker compose config -q` to validate Compose without printing secret-expanded config.
 - Use `./start.sh` for the real integration path.
-- Use `python3 scripts/sre/smoke_test.py --run-ts ...` for report validation when debugging.
+- Use `python3 src/utils/smoke_test.py --run-ts ...` for report validation when debugging.
 
 ## Scope Limits
 - Do not publish any service port from the top-level DinD host container to the real machine.

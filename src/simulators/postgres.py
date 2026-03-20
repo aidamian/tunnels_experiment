@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from tunnels_experiment.bridges.published_tcp import LOCALHOST
-from tunnels_experiment.utils.dependencies import get_psycopg_module
+from bridge.universal import LOCALHOST
+from utils.dependencies import get_psycopg_module
 
 
 def run_postgres_cycle(env: dict[str, str], run_id: str, cycle: int, proof: str) -> dict[str, Any]:
