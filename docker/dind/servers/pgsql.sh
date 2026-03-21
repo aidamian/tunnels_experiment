@@ -15,6 +15,8 @@ source "${script_dir}/../lib/common.sh"
 scope="pgsql-service"
 service_key="pgsql"
 container_name="postgres-demo"
+image_name="postgres:17-alpine"
+data_dir="$(persistent_service_dir "postgres")"
 ready_file="$(ready_file_for_service "${service_key}")"
 managed_pids=()
 
@@ -42,16 +44,25 @@ start_container() {
   # PostgreSQL state.
   log_with_scope "${scope}" "starting PostgreSQL database container"
   docker rm -f "${container_name}" >/dev/null 2>&1 || true
+  prepare_persistent_bind_dir "${data_dir}" "${image_name}" "postgres"
+
+  if [[ -f "${data_dir}/PG_VERSION" ]]; then
+    log_with_scope "${scope}" "reusing persisted PostgreSQL data from ${data_dir}"
+  else
+    log_with_scope "${scope}" "initializing new PostgreSQL data directory at ${data_dir}"
+  fi
 
   # This loopback bind lives inside dind-host-container only. The real machine
   # never receives a directly published PostgreSQL port from this child.
   docker run -d \
     --name "${container_name}" \
+    -e "PGDATA=/var/lib/postgresql/data/pgdata" \
     -e "POSTGRES_USER=${POSTGRES_USER}" \
     -e "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}" \
     -e "POSTGRES_DB=${POSTGRES_DB}" \
+    -v "${data_dir}:/var/lib/postgresql/data/pgdata" \
     -p 127.0.0.1:15432:5432 \
-    postgres:17-alpine >/dev/null
+    "${image_name}" >/dev/null
 }
 
 wait_for_ready() {

@@ -65,10 +65,11 @@ Step by step:
 2. The in-image `entrypoint.sh` hands control to `orchestrator.sh` after `dockerd` is healthy.
 3. `orchestrator.sh` launches `servers/neo4j.sh` and `servers/pgsql.sh`.
 4. Those server scripts run `neo4j-demo` and `postgres-demo` directly as child containers of the DinD host.
-5. Each database container publishes only to `127.0.0.1` inside `dind-host-container`, not to the real machine.
-6. The same server scripts start the required `cloudflared tunnel run` processes and point them at those loopback-only origins.
-7. Because the top-level Compose service has no `ports:` section, the real machine still receives no direct Docker port mapping.
-8. For TCP protocols, the host-side Python bridge opens ordinary local sockets so tools such as DBeaver or Neo4j Bolt applications can connect as if the services were local.
+5. `dind-host-container` also mounts an external persistent volume at `/persistent-service-data`, and the child database containers bind their data directories from that shared path.
+6. Each database container publishes only to `127.0.0.1` inside `dind-host-container`, not to the real machine.
+7. The same server scripts start the required `cloudflared tunnel run` processes and point them at those loopback-only origins.
+8. Because the top-level Compose service has no `ports:` section, the real machine still receives no direct Docker port mapping.
+9. For TCP protocols, the host-side Python bridge opens ordinary local sockets so tools such as DBeaver or Neo4j Bolt applications can connect as if the services were local.
 
 ## Cloudflare Tunnel: HTTP Vs TCP
 
@@ -97,6 +98,28 @@ Runtime state is split deliberately:
   - contains only the public FQDNs needed by the client side
 
 That split keeps the host/client side from reading the DinD tunnel-token file.
+
+## Data Persistence
+
+Database state is kept in a dedicated external Docker volume:
+
+- volume name: `tunnels-experiment-persistent-service-data`
+- mounted into `dind-host-container` at `/persistent-service-data`
+- reused by the child databases through bind mounts:
+  - Neo4j: `/persistent-service-data/neo4j` -> `/data`
+  - PostgreSQL: `/persistent-service-data/postgres` -> `/var/lib/postgresql/data/pgdata`
+
+That means:
+
+- `docker compose down --remove-orphans --volumes` still tears down the outer stack;
+- database contents survive because the persistent data volume is external to Compose;
+- `start_e2e.sh` and `start_host.sh` auto-create that external volume if it does not exist yet.
+
+If you intentionally want to clear both databases, run:
+
+```bash
+make reset-data
+```
 
 ## Direct DBeaver And Bolt Access With The Python Bridge
 

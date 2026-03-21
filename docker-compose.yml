@@ -11,10 +11,13 @@ services:
       - .runtime/dind.env
     environment:
       LOGS_DIR: /logs
+      PERSISTENT_SERVICE_DATA_DIR: /persistent-service-data
     volumes:
-      # Runtime state lives under /logs and /var/lib/docker.
+      # Runtime state lives under /logs and /var/lib/docker. Service data
+      # persists separately so database state can survive full stack teardown.
       - ./_logs:/logs
       - dind-host-docker:/var/lib/docker
+      - dind-persistent-service-data:/persistent-service-data
     healthcheck:
       test:
         - CMD-SHELL
@@ -27,3 +30,6 @@ services:
 
 volumes:
   dind-host-docker:
+  dind-persistent-service-data:
+    external: true
+    name: tunnels-experiment-persistent-service-data

@@ -233,26 +233,42 @@ class UniversalBridgeServer:
   def _serve(self) -> None:
     """Accept local TCP clients and start a worker thread for each one."""
     assert self.listener is not None
-    while not self.stop_event.is_set():
-      try:
-        client_socket, address = self.listener.accept()
-      except socket.timeout:
-        continue
-      except OSError:
-        if self.stop_event.is_set():
-          return
-        raise
+    try:
+      while not self.stop_event.is_set():
+        try:
+          client_socket, address = self.listener.accept()
+        except socket.timeout:
+          continue
+        except OSError:
+          if self.stop_event.is_set():
+            return
+          raise
 
-      # One worker thread per local client keeps the bridge simple and mirrors
-      # how a local TCP proxy is typically structured.
-      handler = threading.Thread(
-        target=self._handle_client,
-        args=(client_socket, address),
-        name=f"bridge-client-{self.name}",
-        daemon=True,
-      )
-      self.handler_threads.append(handler)
-      handler.start()
+        # One worker thread per local client keeps the bridge simple and mirrors
+        # how a local TCP proxy is typically structured.
+        handler = threading.Thread(
+          target=self._handle_client,
+          args=(client_socket, address),
+          name=f"bridge-client-{self.name}",
+          daemon=True,
+        )
+        self.handler_threads.append(handler)
+        handler.start()
+    except Exception as exc:
+      if not self.stop_event.is_set():
+        self._set_error(exc)
+
+  def _log_client_issue(self, address: tuple[str, int], message: str) -> None:
+    """Record a non-fatal per-client bridge issue.
+
+    Parameters
+    ----------
+    address:
+      Client address tuple returned by `accept()`.
+    message:
+      Human-readable issue description.
+    """
+    self.log(f"client {address[0]}:{address[1]} issue: {message}")
 
   def _handle_client(self, client_socket: socket.socket, address: tuple[str, int]) -> None:
     """Bridge one local TCP client to one Cloudflare WebSocket session.
@@ -302,7 +318,7 @@ class UniversalBridgeServer:
       downstream.join()
     except Exception as exc:
       if not self.stop_event.is_set() and not local_stop.is_set():
-        self._set_error(exc)
+        self._log_client_issue(address, str(exc))
     finally:
       local_stop.set()
       close_websocket_quietly(ws)
@@ -340,7 +356,7 @@ class UniversalBridgeServer:
         ws.send(data, opcode=websocket.ABNF.OPCODE_BINARY)
     except Exception as exc:
       if not self.stop_event.is_set() and not stop_event.is_set():
-        self._set_error(exc)
+        self.log(f"socket-to-websocket client stream ended: {exc}")
     finally:
       stop_event.set()
 
@@ -364,7 +380,16 @@ class UniversalBridgeServer:
     websocket = get_websocket_module()
     try:
       while not stop_event.is_set() and not self.stop_event.is_set():
-        message = ws.recv()
+        try:
+          message = ws.recv()
+        except websocket.WebSocketTimeoutException:
+          # An idle bridge session is still healthy. Optionally send a ping so
+          # long-lived host tools such as DBeaver can keep the session warm.
+          try:
+            ws.ping()
+          except Exception:
+            return
+          continue
         if message is None:
           return
         payload = message.encode("utf-8") if isinstance(message, str) else message
@@ -373,10 +398,9 @@ class UniversalBridgeServer:
           # the local client socket.
           client_socket.sendall(payload)
     except websocket.WebSocketConnectionClosedException:
-      if not self.stop_event.is_set() and not stop_event.is_set():
-        self._set_error(RuntimeError("websocket closed unexpectedly"))
+      return
     except Exception as exc:
       if not self.stop_event.is_set() and not stop_event.is_set():
-        self._set_error(exc)
+        self.log(f"websocket-to-socket client stream ended: {exc}")
     finally:
       stop_event.set()

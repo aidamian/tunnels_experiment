@@ -9,10 +9,12 @@
 # provided by docker compose and points at the host-mounted log directory.
 : "${RUN_TS:?RUN_TS is required}"
 : "${LOGS_DIR:=/logs}"
+: "${PERSISTENT_SERVICE_DATA_DIR:=/persistent-service-data}"
 
 # Keep all raw runtime artifacts under /logs/raw for predictable collection.
 RAW_LOGS_DIR="${LOGS_DIR}/raw"
 mkdir -p "${RAW_LOGS_DIR}"
+mkdir -p "${PERSISTENT_SERVICE_DATA_DIR}"
 
 timestamp_utc() {
   date -Iseconds
@@ -41,6 +43,22 @@ ready_file_for_service() {
 service_console_log_for_service() {
   local service_key="$1"
   printf '%s/%s_%s_service_console.log\n' "${RAW_LOGS_DIR}" "${RUN_TS}" "${service_key}"
+}
+
+persistent_service_dir() {
+  local service_key="$1"
+  printf '%s/%s\n' "${PERSISTENT_SERVICE_DATA_DIR}" "${service_key}"
+}
+
+prepare_persistent_bind_dir() {
+  local path="$1"
+  local image="$2"
+  local username="$3"
+  local user_ids
+
+  mkdir -p "${path}"
+  user_ids="$(docker run --rm --entrypoint sh "${image}" -c "printf '%s:%s' \"\$(id -u ${username})\" \"\$(id -g ${username})\"")"
+  chown "${user_ids}" "${path}"
 }
 
 wait_until() {

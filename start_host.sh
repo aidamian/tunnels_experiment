@@ -4,6 +4,7 @@ set -Eeuo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 raw_logs_dir="${repo_root}/_logs/raw"
 venv_dir="${repo_root}/.venv"
+persistent_service_volume_name="tunnels-experiment-persistent-service-data"
 stack_started="false"
 cleanup_started="false"
 run_ts="unknown"
@@ -50,6 +51,33 @@ run_step() {
   "$@" 2>&1 | tee "${logfile}"
 }
 
+run_quiet_step() {
+  local label="$1"
+  local logfile="$2"
+  shift 2
+
+  log "step: ${label}"
+  log "logfile: ${logfile}"
+  log "command: $(quoted_command "$@")"
+  log "streaming suppressed; see logfile for full command output"
+
+  if ! "$@" >"${logfile}" 2>&1; then
+    log "step failed; last 40 log lines:"
+    tail -n 40 "${logfile}" >&2 || true
+    return 1
+  fi
+}
+
+ensure_persistent_service_volume() {
+  if docker volume inspect "${persistent_service_volume_name}" >/dev/null 2>&1; then
+    log "persistent service data volume ${persistent_service_volume_name} already exists"
+    return
+  fi
+
+  log "creating persistent service data volume ${persistent_service_volume_name}"
+  docker volume create "${persistent_service_volume_name}" >/dev/null
+}
+
 extract_run_ts() {
   awk -F= '/^RUN_TS=/{print $2}' "${repo_root}/.runtime/dind.env"
 }
@@ -92,9 +120,10 @@ if [[ -z "${run_ts}" ]]; then
 fi
 
 ensure_python_env
+ensure_persistent_service_volume
 
 run_step "validating compose configuration" "${raw_logs_dir}/${run_ts}_compose_config.log" docker compose config -q
-run_step "building and starting the stack" "${raw_logs_dir}/${run_ts}_compose_up.log" docker compose up --build -d
+run_quiet_step "building and starting the stack" "${raw_logs_dir}/${run_ts}_compose_up.log" docker compose up --build -d
 stack_started="true"
 
 run_step "waiting for the DinD-host topology" "${raw_logs_dir}/${run_ts}_wait_for_stack.log" python3 src/utils/wait_for_stack.py --run-ts "${run_ts}"

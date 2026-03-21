@@ -44,11 +44,15 @@ Build a reproducible demo showing that:
 - `.runtime/public_hosts.json`
   - host-side runtime file
   - contains only the public FQDNs needed by host-side clients and bridges
+- `tunnels-experiment-persistent-service-data`
+  - external Docker volume mounted into `dind-host-container` at `/persistent-service-data`
+  - stores child Neo4j and PostgreSQL data directories across full stack teardown
 
 ## Operating Rules
 - Keep tunnel secrets only in `tunnels.json` and generated `.runtime/` files.
 - Treat `.runtime/` as disposable runtime state.
 - Treat `_logs/raw/` as disposable runtime output.
+- Treat `tunnels-experiment-persistent-service-data` as durable database state.
 - Append `_logs/RUNLOG.md` only after a full end-to-end run.
 - Keep `_logs/*_summary.md` tracked and `_logs/*.log` untracked.
 - Do not publish any service port from the top-level DinD host container to the real machine.
@@ -56,16 +60,18 @@ Build a reproducible demo showing that:
 - Do not move the active Python consumer back into a container.
 - Do not pretend PostgreSQL or Bolt are HTTP services.
 - Do not reintroduce extra DinD child containers unless this file is intentionally updated first.
+- Do not rely on `/var/lib/docker` alone for database durability.
 
 ## Expected Workflow
 1. `python3 src/utils/prepare_runtime.py`
-2. `docker compose up --build -d`
-3. `python3 src/utils/wait_for_stack.py --run-ts <RUN_TS>`
-4. `.venv/bin/python src/experiment_runner.py --run-ts <RUN_TS>`
-5. `python3 src/utils/smoke_test.py --run-ts <RUN_TS>`
-6. `python3 src/utils/append_runlog.py --run-ts <RUN_TS>`
-7. `python3 src/utils/write_summary.py --run-ts <RUN_TS>`
-8. `docker compose down --remove-orphans --volumes`
+2. `docker volume create tunnels-experiment-persistent-service-data || true`
+3. `docker compose up --build -d`
+4. `python3 src/utils/wait_for_stack.py --run-ts <RUN_TS>`
+5. `.venv/bin/python src/experiment_runner.py --run-ts <RUN_TS>`
+6. `python3 src/utils/smoke_test.py --run-ts <RUN_TS>`
+7. `python3 src/utils/append_runlog.py --run-ts <RUN_TS>`
+8. `python3 src/utils/write_summary.py --run-ts <RUN_TS>`
+9. `docker compose down --remove-orphans --volumes`
 
 The default one-command end-to-end path is:
 - `./start_e2e.sh`
@@ -86,6 +92,7 @@ The operator-focused host-testing path is:
 - `python3 src/utils/prepare_runtime.py` succeeds against the local `tunnels.json`.
 - `docker compose up --build -d` brings up only `dind-host-container`.
 - `docker inspect dind-host-container --format '{{json .NetworkSettings.Ports}}'` shows no host bindings.
+- Neo4j and PostgreSQL retain prior data after the outer stack is torn down and started again.
 - Neo4j HTTPS works through tunnel 1.
 - Neo4j Bolt works through tunnel 2 via a host-side local TCP bridge.
 - PostgreSQL works through tunnel 3 via a host-side local TCP bridge.
@@ -269,15 +276,22 @@ If the repository should become leaner while preserving good separation of conce
 - drop `append_runlog.py`, `write_summary.py`, and possibly `smoke_test.py` if strict tracked run history is no longer required.
 
 ## Verified State
-- Verified automated run identifier: `260320_210435`
-- Verified continuous host-testing run identifier: `260320_210613`
+- Verified automated run identifier: `260320_221626`
+- Verified restart-only persistence run identifier: `260320_221836`
 - Verified outcome:
-  - `./start_e2e.sh --duration-seconds 1` completed end to end and then stopped the stack automatically;
-  - `./start_host.sh --verify` reached the foreground Python bridge and printed manual client settings before the interrupt-driven shutdown path was exercised;
-  - the live bridge verification inside run `260320_210613` returned PostgreSQL `SELECT 1` -> `1`;
-  - the live bridge verification inside run `260320_210613` returned Neo4j Bolt `RETURN 1` -> `1`;
+  - `./start_e2e.sh --duration-seconds 1 --keep-up` completed end to end with a fresh persistent data volume;
   - `docker inspect dind-host-container --format '{{json .NetworkSettings.Ports}}'` showed no host bindings;
   - Neo4j HTTPS succeeded over `c74d8a4e03e6.ratio1.link`;
   - Neo4j Bolt succeeded through the host-side local bridge on `127.0.0.1:17687`;
   - PostgreSQL succeeded through the host-side local bridge on `127.0.0.1:15432`;
-  - the host-side experiment completed three proof cycles.
+  - the host-side experiment completed three proof cycles and produced `3` PostgreSQL rows plus `3` Neo4j `ExperimentEvent` nodes;
+  - `docker compose down --remove-orphans --volumes` removed the outer stack while leaving external volume `tunnels-experiment-persistent-service-data` intact;
+  - after restart-only bring-up in run `260320_221836`, `pgsql-service` logged `reusing persisted PostgreSQL data from /persistent-service-data/postgres`;
+  - after restart-only bring-up in run `260320_221836`, `neo4j-service` logged `reusing persisted Neo4j data from /persistent-service-data/neo4j`;
+  - before any second-run proof workload, PostgreSQL still returned total row count `3`;
+  - before any second-run proof workload, Neo4j still returned total `ExperimentEvent` count `3`.
+- Persistence model:
+  - `dind-host-container` mounts external volume `tunnels-experiment-persistent-service-data` at `/persistent-service-data`;
+  - `neo4j-demo` binds `/persistent-service-data/neo4j` to `/data`;
+  - `postgres-demo` binds `/persistent-service-data/postgres` to `/var/lib/postgresql/data/pgdata`;
+  - outer `docker compose down --remove-orphans --volumes` removes ephemeral DinD Docker state but leaves the external database volume intact.

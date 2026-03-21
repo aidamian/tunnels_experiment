@@ -15,6 +15,8 @@ source "${script_dir}/../lib/common.sh"
 scope="neo4j-service"
 service_key="neo4j"
 container_name="neo4j-demo"
+image_name="neo4j:5.26-community"
+data_dir="$(persistent_service_dir "${service_key}")"
 ready_file="$(ready_file_for_service "${service_key}")"
 managed_pids=()
 
@@ -42,19 +44,27 @@ start_container() {
   # deterministic starting point.
   log_with_scope "${scope}" "starting Neo4j database container"
   docker rm -f "${container_name}" >/dev/null 2>&1 || true
+  prepare_persistent_bind_dir "${data_dir}" "${image_name}" "neo4j"
+
+  if [[ -d "${data_dir}/databases" ]]; then
+    log_with_scope "${scope}" "reusing persisted Neo4j data from ${data_dir}"
+  else
+    log_with_scope "${scope}" "initializing new Neo4j data directory at ${data_dir}"
+  fi
 
   # These binds target 127.0.0.1 inside dind-host-container, not the real
   # machine. That means only local processes inside the DinD host, such as
   # cloudflared, can reach the service directly.
   docker run -d \
     --name "${container_name}" \
+    -v "${data_dir}:/data" \
     -e "NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}" \
     -e "NEO4J_server_memory_heap_initial__size=256m" \
     -e "NEO4J_server_memory_heap_max__size=256m" \
     -e "NEO4J_server_memory_pagecache_size=256m" \
     -p 127.0.0.1:17474:7474 \
     -p 127.0.0.1:17687:7687 \
-    neo4j:5.26-community >/dev/null
+    "${image_name}" >/dev/null
 }
 
 wait_for_ready() {
