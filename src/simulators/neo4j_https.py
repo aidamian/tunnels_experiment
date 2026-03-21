@@ -12,6 +12,10 @@ from utils.dependencies import get_requests_module
 def run_neo4j_https_read(run_id: str, public_http_host: str) -> dict[str, Any]:
   """Read the run's Neo4j graph proof through the public HTTPS endpoint.
 
+  Unlike Bolt and PostgreSQL, the Neo4j HTTP API is exposed as a normal HTTPS
+  service. This function therefore talks directly to the public hostname
+  without any localhost TCP bridge.
+
   Parameters
   ----------
   run_id:
@@ -23,6 +27,12 @@ def run_neo4j_https_read(run_id: str, public_http_host: str) -> dict[str, Any]:
   -------
   dict[str, Any]
     Structured result containing the endpoint and the events returned.
+
+  Examples
+  --------
+  >>> result = run_neo4j_https_read("demo_run", "c74d8a4e03e6.ratio1.link")
+  >>> result["ok"]
+  True
   """
   requests = get_requests_module()
 

@@ -16,6 +16,15 @@ def write_json_file(path: Path, payload: dict[str, Any]) -> None:
     Target file path.
   payload:
     JSON-serializable dictionary to write.
+
+  Returns
+  -------
+  None
+    The target file is replaced atomically after the temporary file is written.
+
+  Examples
+  --------
+  ``write_json_file(Path('_logs/raw/report.json'), {'all_ok': True})``
   """
   # Use a temporary file plus replace so readers never observe a half-written
   # JSON artifact while another script is still writing it.

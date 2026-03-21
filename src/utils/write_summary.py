@@ -12,6 +12,7 @@ SRC_DIR = Path(__file__).resolve().parents[1]
 if str(SRC_DIR) not in sys.path:
   sys.path.insert(0, str(SRC_DIR))
 
+
 def parse_args() -> argparse.Namespace:
   """Parse CLI arguments for the summary writer.
 
@@ -19,6 +20,10 @@ def parse_args() -> argparse.Namespace:
   -------
   argparse.Namespace
     Parsed CLI options.
+
+  Examples
+  --------
+  ``python3 src/utils/write_summary.py --run-ts 260320_221626``
   """
   parser = argparse.ArgumentParser(description="Write a tracked iteration summary for the specified run.")
   parser.add_argument("--run-ts", required=True, help="specific run identifier to summarize")
@@ -28,10 +33,17 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
   """Write the markdown summary for the selected run.
 
+  The summary file is the short tracked markdown artifact meant for repository
+  readers who want the verified outcome without opening the full JSON report.
+
   Returns
   -------
   int
     Zero when the summary file was written successfully.
+
+  Examples
+  --------
+  ``python3 src/utils/write_summary.py --run-ts 260320_221626``
   """
   args = parse_args()
   repo_root = Path(__file__).resolve().parents[2]

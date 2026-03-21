@@ -33,10 +33,18 @@ from utils.topology import load_topology_snapshot
 def now_utc() -> str:
   """Return the current UTC timestamp in ISO 8601 format.
 
+  This helper keeps report timestamps consistent across the coordinator and its
+  output artifacts.
+
   Returns
   -------
   str
     Current UTC timestamp.
+
+  Examples
+  --------
+  >>> now_utc().endswith("+00:00")
+  True
   """
   return datetime.now(timezone.utc).isoformat()
 
@@ -44,10 +52,23 @@ def now_utc() -> str:
 def parse_args() -> argparse.Namespace:
   """Parse CLI arguments for the host-side experiment.
 
+  Returns a namespace describing which run identifier should be used and, when
+  requested, which timing defaults should be overridden.
+
   Returns
   -------
   argparse.Namespace
     Parsed CLI options.
+
+  Examples
+  --------
+  Run the coordinator for a specific run identifier:
+
+  ``python3 src/experiment_runner.py --run-ts 260320_221626``
+
+  Override the run duration:
+
+  ``python3 src/experiment_runner.py --run-ts 260320_221626 --duration-seconds 10``
   """
   parser = argparse.ArgumentParser(description="Run the host-side tunnel experiment.")
   parser.add_argument("--run-ts", required=True, help="specific run identifier to use")
@@ -59,10 +80,21 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
   """Run the full host-side proof workload and write its report.
 
+  The coordinator starts the localhost PostgreSQL and Neo4j Bolt bridges,
+  executes repeated proof cycles through those bridges plus the direct Neo4j
+  HTTPS path, and always writes a machine-readable report even when the run
+  fails.
+
   Returns
   -------
   int
     Zero when all proof paths succeeded, otherwise one.
+
+  Examples
+  --------
+  Execute a short end-to-end proof manually:
+
+  ``python3 src/experiment_runner.py --run-ts 260320_221626 --duration-seconds 1``
   """
   args = parse_args()
   repo_root = Path(__file__).resolve().parents[1]

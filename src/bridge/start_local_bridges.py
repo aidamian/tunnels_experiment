@@ -1,8 +1,8 @@
 """Start manual localhost bridges that relay directly to tunnel FQDNs.
 
-This is the supported client-side operator path for tools such as DBeaver and
-Bolt consumers when the client machine should remain independent of any
-`cloudflared` tooling.
+This CLI is the bridge component's operator-facing entrypoint for manual host
+testing. It intentionally stays independent of client-side ``cloudflared`` and
+uses the repository's own Python bridge implementation instead.
 """
 
 from __future__ import annotations
@@ -20,7 +20,16 @@ SRC_DIR = Path(__file__).resolve().parents[1]
 if str(SRC_DIR) not in sys.path:
   sys.path.insert(0, str(SRC_DIR))
 
+from bridge.local_bridges import (
+  LOCALHOST,
+  bridge_state,
+  default_specs,
+  load_public_hosts,
+  repo_root,
+)
 from bridge.universal import UniversalBridgeServer
+from simulators.neo4j_bolt import verify_neo4j_bolt_bridge
+from simulators.postgres import verify_postgres_bridge
 from utils.demo_config import (
   MANUAL_NEO4J_BOLT_FORWARD_PORT,
   MANUAL_POSTGRES_FORWARD_PORT,
@@ -30,19 +39,28 @@ from utils.demo_config import (
   POSTGRES_PASSWORD,
   POSTGRES_USER,
 )
-from utils.local_bridges import (
-  LOCALHOST,
-  bridge_state,
-  default_specs,
-  load_public_hosts,
-  repo_root,
-  verify_neo4j_bridge,
-  verify_postgres_bridge,
-)
 
 
 def parse_args() -> argparse.Namespace:
-  """Parse CLI arguments."""
+  """Parse CLI arguments for the manual bridge launcher.
+
+  Returns
+  -------
+  argparse.Namespace
+    Parsed command-line options controlling service selection, local ports,
+    verification, and runtime duration.
+
+  Examples
+  --------
+  Start both manual bridges:
+
+  ``python3 src/bridge/start_local_bridges.py``
+
+  Start only PostgreSQL and verify it:
+
+  ``python3 src/bridge/start_local_bridges.py --service postgres --verify``
+  """
+
   parser = argparse.ArgumentParser(
     description=(
       "Start local Python TCP bridges so DBeaver and Bolt clients can connect "
@@ -85,7 +103,24 @@ def parse_args() -> argparse.Namespace:
 
 
 def selected_specs(args: argparse.Namespace) -> list[Any]:
-  """Filter bridge specs based on CLI selection."""
+  """Return the bridge specifications selected by the operator.
+
+  Parameters
+  ----------
+  args:
+    Parsed CLI namespace returned by :func:`parse_args`.
+
+  Returns
+  -------
+  list[Any]
+    Bridge specification list filtered to the requested services.
+
+  Examples
+  --------
+  ``--service all`` returns both PostgreSQL and Neo4j bridge specs, while a
+  narrower selection returns only the requested service.
+  """
+
   specs = default_specs(args.postgres_port, args.neo4j_port)
   if args.service == "all":
     return specs
@@ -93,7 +128,24 @@ def selected_specs(args: argparse.Namespace) -> list[Any]:
 
 
 def print_connection_instructions(started_bridges: list[dict[str, Any]]) -> None:
-  """Print operator-facing connection details."""
+  """Print operator-facing connection instructions for the started bridges.
+
+  Parameters
+  ----------
+  started_bridges:
+    Structured bridge metadata describing which local listeners are running.
+
+  Returns
+  -------
+  None
+    This function prints human-readable instructions and returns ``None``.
+
+  Examples
+  --------
+  After bridge startup the CLI prints DBeaver-style PostgreSQL settings and a
+  Bolt URI for Neo4j if those services are enabled.
+  """
+
   print("started local Python bridges:")
   for bridge in started_bridges:
     print(
@@ -126,7 +178,27 @@ def maybe_verify(
   args: argparse.Namespace,
   started_bridges: list[dict[str, Any]],
 ) -> dict[str, Any]:
-  """Optionally verify the started bridges with real driver calls."""
+  """Optionally verify the started bridges with real driver calls.
+
+  Parameters
+  ----------
+  args:
+    Parsed CLI namespace controlling whether verification should run.
+  started_bridges:
+    Structured metadata for the started manual bridges.
+
+  Returns
+  -------
+  dict[str, Any]
+    Verification results keyed by service name. Returns an empty mapping when
+    ``--verify`` was not requested.
+
+  Examples
+  --------
+  When ``--verify`` is set, this function runs ``SELECT 1`` through the
+  PostgreSQL bridge and ``RETURN 1`` through the Neo4j Bolt bridge.
+  """
+
   verification: dict[str, Any] = {}
   if not args.verify:
     return verification
@@ -135,7 +207,7 @@ def maybe_verify(
     if bridge["service_key"] == "postgres":
       verification["postgres"] = verify_postgres_bridge(bridge["local_port"])
     if bridge["service_key"] == "neo4j":
-      verification["neo4j"] = verify_neo4j_bridge(bridge["local_port"])
+      verification["neo4j"] = verify_neo4j_bolt_bridge(bridge["local_port"])
 
   print("verification results:")
   for service_key, result in verification.items():
@@ -145,7 +217,25 @@ def maybe_verify(
 
 
 def main() -> int:
-  """Start the requested bridges and keep them alive."""
+  """Start the requested bridges and keep them alive until exit.
+
+  Returns
+  -------
+  int
+    Zero when the bridge process exits cleanly, either after the requested
+    duration or after ``Ctrl+C``.
+
+  Examples
+  --------
+  Start both bridges and keep them in the foreground:
+
+  >>> # .venv/bin/python src/bridge/start_local_bridges.py
+
+  Start only PostgreSQL and verify it:
+
+  >>> # .venv/bin/python src/bridge/start_local_bridges.py --service postgres --verify
+  """
+
   args = parse_args()
   public_hosts = load_public_hosts()
   run_ts = args.run_ts or f"manual_{datetime.now().strftime('%y%m%d_%H%M%S')}"

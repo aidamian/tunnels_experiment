@@ -13,6 +13,11 @@ def docker_status() -> str:
   -------
   str
     Docker-reported container status, or a fallback message if absent.
+
+  Examples
+  --------
+  >>> isinstance(docker_status(), str)
+  True
   """
   # This helper keeps the polling scripts readable by centralizing the exact
   # `docker ps` filter used to locate `dind-host-container`.
@@ -32,6 +37,11 @@ def top_level_published_ports() -> list[str]:
   -------
   list[str]
     Human-readable host-binding descriptions. Empty means nothing is published.
+
+  Examples
+  --------
+  In the expected demo topology this returns an empty list because the
+  top-level DinD container publishes no host ports.
   """
   # `docker inspect` is the authoritative source for whether the top-level
   # container published any real host ports.

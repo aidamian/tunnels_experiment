@@ -35,6 +35,12 @@ def _import_required_module(module_name: str) -> ModuleType:
   ------
   SystemExit
     Raised when the requested dependency is not installed.
+
+  Examples
+  --------
+  >>> module = _import_required_module("json")
+  >>> module.__name__
+  'json'
   """
   try:
     return import_module(module_name)
@@ -49,6 +55,10 @@ def get_psycopg_module() -> ModuleType:
   -------
   ModuleType
     Imported `psycopg` module.
+
+  Examples
+  --------
+  The PostgreSQL simulator calls this immediately before opening a connection.
   """
   return _import_required_module("psycopg")
 
@@ -60,6 +70,10 @@ def get_requests_module() -> ModuleType:
   -------
   ModuleType
     Imported `requests` module.
+
+  Examples
+  --------
+  The Neo4j HTTPS simulator calls this before issuing its HTTP POST request.
   """
   return _import_required_module("requests")
 
@@ -71,6 +85,11 @@ def get_websocket_module() -> ModuleType:
   -------
   ModuleType
     Imported `websocket` module.
+
+  Examples
+  --------
+  The universal bridge calls this before creating the Cloudflare websocket
+  connection.
   """
   return _import_required_module("websocket")
 
@@ -82,5 +101,10 @@ def get_graph_database_class():
   -------
   type
     `neo4j.GraphDatabase` class.
+
+  Examples
+  --------
+  The Neo4j Bolt simulator and manual bridge verification helper use this
+  function before opening Bolt sessions.
   """
   return _import_required_module("neo4j").GraphDatabase

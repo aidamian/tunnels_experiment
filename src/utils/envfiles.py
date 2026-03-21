@@ -18,6 +18,12 @@ def load_public_hosts_file(path: Path) -> dict[str, str]:
   -------
   dict[str, str]
     Mapping of service keys to public hostnames.
+
+  Examples
+  --------
+  >>> hosts = load_public_hosts_file(Path(".runtime/public_hosts.json"))
+  >>> "postgres" in hosts
+  True
   """
   payload = json.loads(path.read_text(encoding="utf-8"))
   if not isinstance(payload, dict):

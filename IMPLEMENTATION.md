@@ -77,7 +77,7 @@ The default one-command end-to-end path is:
 - `./start_e2e.sh`
 
 The optional manual local-bridge path is:
-- `.venv/bin/python src/utils/start_local_bridges.py`
+- `.venv/bin/python src/bridge/start_local_bridges.py`
 
 The operator-focused host-testing path is:
 - `./start_host.sh`
@@ -185,13 +185,13 @@ Labels used below:
   - status: `Keep`
 
 - `src/simulators/postgres.py`
-  - purpose: PostgreSQL write/read proof cycle.
-  - reason: keeps PostgreSQL-specific proof logic out of the coordinator.
+  - purpose: PostgreSQL write/read proof cycle plus the lightweight manual bridge verification query.
+  - reason: keeps PostgreSQL-specific proof logic out of both the coordinator and the bridge transport layer.
   - status: `Mergeable`
 
 - `src/simulators/neo4j_bolt.py`
-  - purpose: Neo4j Bolt write/read proof cycle.
-  - reason: keeps Bolt-specific proof logic out of the coordinator.
+  - purpose: Neo4j Bolt write/read proof cycle plus the lightweight manual bridge verification query.
+  - reason: keeps Bolt-specific proof logic out of both the coordinator and the bridge transport layer.
   - status: `Mergeable`
 
 - `src/simulators/neo4j_https.py`
@@ -226,13 +226,13 @@ Labels used below:
   - status: `Optional`
 
 ### Manual bridge helpers
-- `src/utils/start_local_bridges.py`
+- `src/bridge/start_local_bridges.py`
   - purpose: manual CLI that exposes local PostgreSQL and Neo4j Bolt ports for DBeaver and Bolt consumers.
   - reason: supports the non-automated manual client workflow without client-side `cloudflared`.
   - status: `Optional`
 
-- `src/utils/local_bridges.py`
-  - purpose: shared bridge specs, runtime loading, and verification helpers for the manual bridge CLI.
+- `src/bridge/local_bridges.py`
+  - purpose: shared bridge specs and runtime host loading for the manual bridge CLI.
   - reason: keeps `start_local_bridges.py` focused on CLI behavior.
   - status: `Optional`
 
@@ -272,7 +272,7 @@ If the repository should become leaner while preserving good separation of conce
 - merge `docker/dind/orchestrator.sh` and `docker/dind/lib/common.sh` if dynamic service discovery does not need to stay generic;
 - merge the three simulator modules into `src/experiment_runner.py` if a single-file host proof runner is preferred over per-protocol separation;
 - merge `envfiles.py`, `files.py`, `docker_runtime.py`, `dependencies.py`, and `topology.py` into one compact runtime helper module;
-- keep `start_local_bridges.py` only if the manual DBeaver/Bolt workflow remains a supported feature;
+- keep `src/bridge/start_local_bridges.py` only if the manual DBeaver/Bolt workflow remains a supported feature;
 - drop `append_runlog.py`, `write_summary.py`, and possibly `smoke_test.py` if strict tracked run history is no longer required.
 
 ## Verified State

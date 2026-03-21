@@ -49,6 +49,11 @@ def normalize_public_host(raw_value: str) -> str:
   -------
   str
     Hostname with any scheme prefix and trailing slash removed.
+
+  Examples
+  --------
+  >>> normalize_public_host("https://example.com/")
+  'example.com'
   """
   # Downstream tools decide whether they need `https://` or `wss://`, so the
   # generated runtime file stores the bare hostname only.
@@ -58,10 +63,18 @@ def normalize_public_host(raw_value: str) -> str:
 def main() -> int:
   """Build the per-run runtime files used by the demo.
 
+  The generated files deliberately separate DinD-only state from host-side
+  client state so the bridge and proof runner never need direct access to
+  tunnel tokens.
+
   Returns
   -------
   int
     Zero when the runtime files were generated successfully.
+
+  Examples
+  --------
+  ``python3 src/utils/prepare_runtime.py``
   """
   repo_root = Path(__file__).resolve().parents[2]
   tunnels_path = repo_root / "tunnels.json"

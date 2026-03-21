@@ -23,6 +23,10 @@ def parse_args() -> argparse.Namespace:
   -------
   argparse.Namespace
     Parsed CLI options.
+
+  Examples
+  --------
+  ``python3 src/utils/wait_for_stack.py --run-ts 260320_221836``
   """
   parser = argparse.ArgumentParser(
     description="Wait for the top-level DinD host container to report readiness.",
@@ -35,10 +39,18 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
   """Wait until the topology-ready marker reports success.
 
+  The helper prints Docker status updates while the DinD host is warming up so
+  long first-time pulls and Neo4j initialization still look intentional rather
+  than hung.
+
   Returns
   -------
   int
     Zero when the topology marker reports readiness, otherwise one.
+
+  Examples
+  --------
+  ``python3 src/utils/wait_for_stack.py --run-ts 260320_221836``
   """
   args = parse_args()
   repo_root = Path(__file__).resolve().parents[2]

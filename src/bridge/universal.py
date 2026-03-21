@@ -27,6 +27,9 @@ BUFFER_SIZE = 64 * 1024
 def wait_for_local_port(port: int, timeout_seconds: float) -> None:
   """Wait until a local TCP port starts accepting connections.
 
+  This helper is used immediately after listener startup so callers can safely
+  treat the bridge port as ready before they launch a client against it.
+
   Parameters
   ----------
   port:
@@ -38,6 +41,12 @@ def wait_for_local_port(port: int, timeout_seconds: float) -> None:
   ------
   RuntimeError
     Raised when the port does not become reachable before the timeout.
+
+  Examples
+  --------
+  After creating a listener on ``127.0.0.1:15432``:
+
+  >>> wait_for_local_port(15432, timeout_seconds=5)
   """
   deadline = time.time() + timeout_seconds
   while time.time() < deadline:
@@ -52,10 +61,20 @@ def wait_for_local_port(port: int, timeout_seconds: float) -> None:
 def build_access_headers() -> dict[str, str]:
   """Build optional Cloudflare Access headers for the WebSocket handshake.
 
+  The manual and automated bridge flows do not require these headers in the
+  default repository topology, but the transport can attach them if the public
+  hostname is additionally protected by Cloudflare Access service tokens.
+
   Returns
   -------
   dict[str, str]
     Header dictionary for `websocket.create_connection`.
+
+  Examples
+  --------
+  >>> headers = build_access_headers()
+  >>> "User-Agent" in headers
+  True
   """
   # These headers are optional and only matter if the tunnel hostname is also
   # protected by Cloudflare Access service tokens.
@@ -75,6 +94,16 @@ def close_socket_quietly(sock: socket.socket | None) -> None:
   ----------
   sock:
     Socket to close, or `None`.
+
+  Returns
+  -------
+  None
+    This helper only performs cleanup and returns ``None``.
+
+  Examples
+  --------
+  The bridge calls this during shutdown and per-client cleanup after either
+  side closes the stream.
   """
   if sock is None:
     return
@@ -95,6 +124,15 @@ def close_websocket_quietly(ws: Any) -> None:
   ----------
   ws:
     WebSocket connection object, or `None`.
+
+  Returns
+  -------
+  None
+    This helper only performs cleanup and returns ``None``.
+
+  Examples
+  --------
+  The bridge uses this when a client stream ends or the bridge context exits.
   """
   if ws is None:
     return
@@ -116,6 +154,10 @@ def ensure_port_available(port: int) -> None:
   ------
   RuntimeError
     Raised when another local process already owns the port.
+
+  Examples
+  --------
+  >>> ensure_port_available(55432)
   """
   # Probe-bind first so the operator gets a clear failure before the bridge
   # starts its background threads.
@@ -131,6 +173,11 @@ def ensure_port_available(port: int) -> None:
 class UniversalBridgeServer:
   """Expose a local TCP listener backed by a Cloudflare TCP application.
 
+  The server accepts ordinary localhost TCP clients and forwards their byte
+  streams to a Cloudflare-published TCP application over WebSocket. From the
+  point of view of local tools such as DBeaver, ``psycopg``, or Neo4j Bolt
+  drivers, the service looks like a normal local TCP socket.
+
   Attributes
   ----------
   name:
@@ -143,6 +190,18 @@ class UniversalBridgeServer:
     Current run identifier used in log file names.
   raw_logs_dir:
     Directory where bridge logs are written.
+
+  Examples
+  --------
+  >>> from pathlib import Path
+  >>> with UniversalBridgeServer(
+  ...   name="postgres_client_bridge",
+  ...   hostname="60bf15690490.ratio1.link",
+  ...   local_port=15432,
+  ...   run_ts="demo_run",
+  ...   raw_logs_dir=Path("_logs/raw"),
+  ... ) as server:
+  ...   server.raise_if_failed()
   """
 
   name: str
@@ -152,7 +211,18 @@ class UniversalBridgeServer:
   raw_logs_dir: Path
 
   def __post_init__(self) -> None:
-    """Initialize mutable runtime state for the bridge."""
+    """Initialize mutable runtime state for the bridge.
+
+    Returns
+    -------
+    None
+      The dataclass stores initialized mutable fields on ``self``.
+
+    Examples
+    --------
+    This method runs automatically after dataclass construction and does not
+    need to be called directly by bridge consumers.
+    """
     self.listener: socket.socket | None = None
     self.server_thread: threading.Thread | None = None
     self.stop_event = threading.Event()
@@ -168,6 +238,16 @@ class UniversalBridgeServer:
     ----------
     message:
       Log message to append.
+
+    Returns
+    -------
+    None
+      The message is appended to the bridge's raw log file.
+
+    Examples
+    --------
+    >>> server = UniversalBridgeServer("demo", "example.com", 12345, "run", Path("_logs/raw"))
+    >>> server.log("bridge started")
     """
     self.raw_logs_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).isoformat()
@@ -177,10 +257,24 @@ class UniversalBridgeServer:
   def __enter__(self) -> "UniversalBridgeServer":
     """Start the local TCP listener and background accept loop.
 
+    The returned bridge instance is ready to accept localhost TCP clients and
+    relay them to the configured ``wss://`` hostname.
+
     Returns
     -------
     UniversalBridgeServer
       Running bridge instance.
+
+    Examples
+    --------
+    >>> with UniversalBridgeServer(
+    ...   name="neo4j_bolt_client_bridge",
+    ...   hostname="99c7e7089d1b.ratio1.link",
+    ...   local_port=17687,
+    ...   run_ts="demo_run",
+    ...   raw_logs_dir=Path("_logs/raw"),
+    ... ) as bridge:
+    ...   bridge.raise_if_failed()
     """
     # Create the local listener before any connection attempts begin so callers
     # can reliably point clients at the published local port.
@@ -198,7 +292,27 @@ class UniversalBridgeServer:
     return self
 
   def __exit__(self, exc_type, exc, tb) -> None:
-    """Stop the listener and join worker threads."""
+    """Stop the listener and join worker threads.
+
+    Parameters
+    ----------
+    exc_type:
+      Exception type received from the context manager, if any.
+    exc:
+      Exception instance received from the context manager, if any.
+    tb:
+      Traceback received from the context manager, if any.
+
+    Returns
+    -------
+    None
+      The listener and background threads are shut down in place.
+
+    Examples
+    --------
+    This method runs automatically when leaving the ``with`` block that owns
+    the bridge.
+    """
     self.stop_event.set()
     close_socket_quietly(self.listener)
     if self.server_thread is not None:
@@ -209,10 +323,17 @@ class UniversalBridgeServer:
   def raise_if_failed(self) -> None:
     """Raise the first worker failure observed by the bridge.
 
+    Callers poll this method while the bridge stays up in the foreground. It
+    only reports bridge-wide failures, not routine per-client disconnects.
+
     Raises
     ------
     RuntimeError
       Raised when a worker thread recorded a bridge error.
+
+    Examples
+    --------
+    >>> bridge.raise_if_failed()
     """
     if self.error is not None:
       raise RuntimeError(f"{self.name} failed: {self.error}") from self.error
@@ -224,6 +345,16 @@ class UniversalBridgeServer:
     ----------
     exc:
       Exception to record.
+
+    Returns
+    -------
+    None
+      The first observed bridge-wide error is stored on ``self.error``.
+
+    Examples
+    --------
+    Fatal accept-loop failures record their first exception here so the
+    foreground owner can surface it through :meth:`raise_if_failed`.
     """
     with self.error_lock:
       if self.error is None:
@@ -231,7 +362,19 @@ class UniversalBridgeServer:
         self.log(f"bridge error: {exc}")
 
   def _serve(self) -> None:
-    """Accept local TCP clients and start a worker thread for each one."""
+    """Accept local TCP clients and start a worker thread for each one.
+
+    Returns
+    -------
+    None
+      The accept loop runs until the bridge is stopped or a fatal listener
+      error occurs.
+
+    Examples
+    --------
+    This listener loop is started on a background thread from
+    :meth:`__enter__` and stays alive for the lifetime of the bridge context.
+    """
     assert self.listener is not None
     try:
       while not self.stop_event.is_set():
@@ -267,6 +410,16 @@ class UniversalBridgeServer:
       Client address tuple returned by `accept()`.
     message:
       Human-readable issue description.
+
+    Returns
+    -------
+    None
+      The issue is logged without marking the whole bridge as failed.
+
+    Examples
+    --------
+    One disconnected DBeaver session is reported here without shutting down
+    later sessions on the same bridge listener.
     """
     self.log(f"client {address[0]}:{address[1]} issue: {message}")
 
@@ -279,6 +432,17 @@ class UniversalBridgeServer:
       Accepted local TCP client socket.
     address:
       Client address tuple returned by `accept()`.
+
+    Returns
+    -------
+    None
+      The method owns one complete client session and returns when that
+      session ends.
+
+    Examples
+    --------
+    Each accepted PostgreSQL or Bolt client gets one call to this method and
+    one dedicated Cloudflare WebSocket session.
     """
     websocket = get_websocket_module()
     ws: Any = None
@@ -340,6 +504,17 @@ class UniversalBridgeServer:
       Connected Cloudflare WebSocket session.
     stop_event:
       Shared per-client stop signal.
+
+    Returns
+    -------
+    None
+      The method exits when the client closes, the bridge stops, or the
+      per-client stop signal is set.
+
+    Examples
+    --------
+    PostgreSQL startup packets and Bolt handshake bytes flow through this
+    method from the local TCP client socket to the Cloudflare WebSocket.
     """
     websocket = get_websocket_module()
     try:
@@ -376,6 +551,23 @@ class UniversalBridgeServer:
       Connected Cloudflare WebSocket session.
     stop_event:
       Shared per-client stop signal.
+
+    Returns
+    -------
+    None
+      The method exits when the websocket closes, the bridge stops, or the
+      per-client stop signal is set.
+
+    Examples
+    --------
+    Database responses carried as WebSocket frames are written back to the
+    local TCP client through this method.
+
+    Notes
+    -----
+    Idle ``ws.recv()`` timeouts are treated as keepalive events. The bridge
+    sends a ping and keeps the session alive if the upstream path still
+    responds.
     """
     websocket = get_websocket_module()
     try:

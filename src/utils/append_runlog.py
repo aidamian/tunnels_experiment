@@ -13,6 +13,7 @@ SRC_DIR = Path(__file__).resolve().parents[1]
 if str(SRC_DIR) not in sys.path:
   sys.path.insert(0, str(SRC_DIR))
 
+
 def parse_args() -> argparse.Namespace:
   """Parse CLI arguments for the run-log writer.
 
@@ -20,6 +21,12 @@ def parse_args() -> argparse.Namespace:
   -------
   argparse.Namespace
     Parsed CLI options.
+
+  Examples
+  --------
+  Append a verified run entry:
+
+  ``python3 src/utils/append_runlog.py --run-ts 260320_221626``
   """
   parser = argparse.ArgumentParser(description="Append a verified end-to-end run entry to _logs/RUNLOG.md.")
   parser.add_argument("--run-ts", required=True, help="specific run identifier to append")
@@ -29,10 +36,18 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
   """Append the selected run to the tracked markdown log.
 
+  The appended markdown entry is intentionally compact so the repository keeps
+  a chronological summary of verified runs without forcing readers to open the
+  full JSON report first.
+
   Returns
   -------
   int
     Zero when the markdown entry was appended successfully.
+
+  Examples
+  --------
+  ``python3 src/utils/append_runlog.py --run-ts 260320_221626``
   """
   args = parse_args()
   repo_root = Path(__file__).resolve().parents[2]

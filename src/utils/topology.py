@@ -22,6 +22,11 @@ def load_topology_snapshot(path: Path, public_hosts: dict[str, str]) -> dict[str
   dict[str, Any]
     Topology payload. Falls back to the current expected topology if the file
     is missing or malformed.
+
+  Examples
+  --------
+  The experiment runner uses this to prefer the orchestrator's discovered
+  topology while still having a safe fallback when the snapshot is absent.
   """
   # Fall back to the current expected demo topology when the generated snapshot
   # is unavailable, but prefer the snapshot so reports reflect the actual

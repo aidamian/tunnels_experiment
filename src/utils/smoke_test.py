@@ -13,6 +13,7 @@ SRC_DIR = Path(__file__).resolve().parents[1]
 if str(SRC_DIR) not in sys.path:
   sys.path.insert(0, str(SRC_DIR))
 
+
 def parse_args() -> argparse.Namespace:
   """Parse CLI arguments for the smoke test.
 
@@ -20,6 +21,10 @@ def parse_args() -> argparse.Namespace:
   -------
   argparse.Namespace
     Parsed CLI options.
+
+  Examples
+  --------
+  ``python3 src/utils/smoke_test.py --run-ts 260320_221626``
   """
   parser = argparse.ArgumentParser(description="Validate the latest host-side experiment report.")
   parser.add_argument("--run-ts", required=True, help="specific run identifier to validate")
@@ -29,10 +34,18 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
   """Wait for and validate the generated experiment report.
 
+  The smoke test intentionally validates the report artifact rather than
+  rerunning the proof workload. That keeps post-run validation explicit and
+  fast while still checking every required claim.
+
   Returns
   -------
   int
     Zero when the report satisfies the expected proof checks, otherwise one.
+
+  Examples
+  --------
+  ``python3 src/utils/smoke_test.py --run-ts 260320_221626``
   """
   args = parse_args()
   repo_root = Path(__file__).resolve().parents[2]

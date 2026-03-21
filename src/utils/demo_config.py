@@ -1,4 +1,10 @@
-"""Shared non-secret demo constants used by host-side code and runtime generation."""
+"""Shared non-secret demo constants used by host-side code and runtime generation.
+
+This module centralizes stable defaults such as demo credentials, bridge ports,
+and experiment timing values. Host-side code imports these constants so it can
+remain independent from the DinD-only runtime env file that also contains
+tunnel tokens.
+"""
 
 from __future__ import annotations
 

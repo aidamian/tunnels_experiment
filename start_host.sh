@@ -13,7 +13,7 @@ mkdir -p "${raw_logs_dir}"
 
 usage() {
   cat <<'EOF'
-Usage: ./start_host.sh [start_local_bridges.py options]
+Usage: ./start_host.sh [bridge CLI options]
 
 This command starts the DinD stack, waits for readiness, and then launches the
 manual Python bridge in the foreground for host tools such as DBeaver.
@@ -129,4 +129,4 @@ stack_started="true"
 run_step "waiting for the DinD-host topology" "${raw_logs_dir}/${run_ts}_wait_for_stack.log" python3 src/utils/wait_for_stack.py --run-ts "${run_ts}"
 
 log "starting foreground Python bridge for host-side tools"
-"${venv_dir}/bin/python" "${repo_root}/src/utils/start_local_bridges.py" --run-ts "${run_ts}" "${bridge_args[@]}"
+"${venv_dir}/bin/python" "${repo_root}/src/bridge/start_local_bridges.py" --run-ts "${run_ts}" "${bridge_args[@]}"

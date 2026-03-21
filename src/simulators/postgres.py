@@ -12,6 +12,10 @@ from utils.dependencies import get_psycopg_module
 def run_postgres_cycle(run_id: str, cycle: int, proof: str, local_port: int) -> dict[str, Any]:
   """Run one PostgreSQL write/read proof cycle.
 
+  The function behaves like a real external PostgreSQL client. It connects to
+  the host-side local bridge, writes one proof row, and reads the run's rows
+  back so the coordinator can prove both write and read behavior.
+
   Parameters
   ----------
   run_id:
@@ -27,6 +31,14 @@ def run_postgres_cycle(run_id: str, cycle: int, proof: str, local_port: int) -> 
   -------
   dict[str, Any]
     Structured result including inserted-row metadata and all rows for the run.
+
+  Examples
+  --------
+  After the PostgreSQL bridge is listening on ``127.0.0.1:15432``:
+
+  >>> result = run_postgres_cycle("demo_run", 1, "demo-proof", 15432)
+  >>> result["ok"]
+  True
   """
   psycopg = get_psycopg_module()
 
@@ -79,4 +91,52 @@ def run_postgres_cycle(run_id: str, cycle: int, proof: str, local_port: int) -> 
     "inserted_id": inserted_id,
     "inserted_at": observed_at,
     "rows_for_run": rows,
+  }
+
+
+def verify_postgres_bridge(local_port: int) -> dict[str, Any]:
+  """Verify basic PostgreSQL connectivity through the host-side bridge.
+
+  This lighter-weight check is used by the manual bridge CLI. It proves that a
+  PostgreSQL client can complete a minimal round trip through the local bridge
+  without writing experiment rows.
+
+  Parameters
+  ----------
+  local_port:
+    Localhost TCP port exposed by the host-side PostgreSQL bridge.
+
+  Returns
+  -------
+  dict[str, Any]
+    Verification payload containing success state and query result.
+
+  Examples
+  --------
+  After the manual PostgreSQL bridge is listening on ``127.0.0.1:55432``:
+
+  >>> result = verify_postgres_bridge(55432)
+  >>> result["query_result"]
+  1
+  """
+  psycopg = get_psycopg_module()
+
+  with psycopg.connect(
+    host=LOCALHOST,
+    port=local_port,
+    dbname=POSTGRES_DB,
+    user=POSTGRES_USER,
+    password=POSTGRES_PASSWORD,
+    connect_timeout=10,
+    sslmode="disable",
+  ) as connection:
+    with connection.cursor() as cursor:
+      cursor.execute("SELECT 1")
+      value = cursor.fetchone()[0]
+
+  return {
+    "ok": value == 1,
+    "host": LOCALHOST,
+    "port": local_port,
+    "query_result": value,
   }

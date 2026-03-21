@@ -12,6 +12,10 @@ from utils.dependencies import get_graph_database_class
 def run_neo4j_bolt_cycle(run_id: str, cycle: int, proof: str, local_port: int) -> dict[str, Any]:
   """Run one Neo4j Bolt write/read proof cycle.
 
+  The function simulates a real external Bolt client by connecting to the
+  host-side local Bolt bridge, writing graph proof data, and then reading the
+  run's events back over the same Bolt path.
+
   Parameters
   ----------
   run_id:
@@ -27,6 +31,14 @@ def run_neo4j_bolt_cycle(run_id: str, cycle: int, proof: str, local_port: int) -
   -------
   dict[str, Any]
     Structured result containing the write result and all events for the run.
+
+  Examples
+  --------
+  After the Neo4j Bolt bridge is listening on ``127.0.0.1:17687``:
+
+  >>> result = run_neo4j_bolt_cycle("demo_run", 1, "demo-proof", 17687)
+  >>> result["ok"]
+  True
   """
   GraphDatabase = get_graph_database_class()
 
@@ -76,4 +88,50 @@ def run_neo4j_bolt_cycle(run_id: str, cycle: int, proof: str, local_port: int) -
     "ok": True,
     "write_result": dict(write_result),
     "events_for_run": rows,
+  }
+
+
+def verify_neo4j_bolt_bridge(local_port: int) -> dict[str, Any]:
+  """Verify basic Neo4j Bolt connectivity through the host-side bridge.
+
+  This lighter-weight check is used by the manual bridge CLI. It proves that a
+  Bolt client can complete a minimal query round trip through the local bridge
+  without mutating the experiment graph.
+
+  Parameters
+  ----------
+  local_port:
+    Localhost TCP port exposed by the host-side Neo4j Bolt bridge.
+
+  Returns
+  -------
+  dict[str, Any]
+    Verification payload containing success state and query result.
+
+  Examples
+  --------
+  After the manual Neo4j Bolt bridge is listening on ``127.0.0.1:57687``:
+
+  >>> result = verify_neo4j_bolt_bridge(57687)
+  >>> result["query_result"]
+  1
+  """
+  GraphDatabase = get_graph_database_class()
+
+  driver = GraphDatabase.driver(
+    f"bolt://{LOCALHOST}:{local_port}",
+    auth=(NEO4J_USER, NEO4J_PASSWORD),
+    connection_timeout=10,
+  )
+  try:
+    with driver.session() as session:
+      value = session.run("RETURN 1 AS ready").single()["ready"]
+  finally:
+    driver.close()
+
+  return {
+    "ok": value == 1,
+    "host": LOCALHOST,
+    "port": local_port,
+    "query_result": value,
   }

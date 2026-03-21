@@ -49,9 +49,9 @@ The DinD host image is deliberately self-contained:
 The host-side Python code now has a single flat source tree at repo-root `src/`:
 
 - `src/utils/`
-  - runtime prep, report helpers, Docker polling, shared config, and the manual local-bridge CLI
+  - runtime prep, report helpers, Docker polling, shared config, and small shared helpers
 - `src/bridge/`
-  - the universal TCP-to-WebSocket bridge used for any published TCP service
+  - the universal TCP-to-WebSocket bridge plus the manual local-bridge CLI
 - `src/simulators/`
   - separate PostgreSQL, Neo4j Bolt, and Neo4j HTTPS proof logic
 - `src/experiment_runner.py`
@@ -131,13 +131,13 @@ What this means in practice:
 The repository now provides a tracked helper for that path:
 
 ```bash
-.venv/bin/python src/utils/start_local_bridges.py
+.venv/bin/python src/bridge/start_local_bridges.py
 ```
 
 Optional proof path with the repo virtualenv:
 
 ```bash
-.venv/bin/python src/utils/start_local_bridges.py --verify --duration-seconds 1
+.venv/bin/python src/bridge/start_local_bridges.py --verify --duration-seconds 1
 ```
 
 This starts two local forwards:
