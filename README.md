@@ -169,6 +169,12 @@ Press `Ctrl+C` in the terminal running `start_local_bridges.py`.
 
 There is still no supported way to point DBeaver or a Bolt driver directly at the current public `*.ratio1.link` hostname as if it were a native PostgreSQL or Bolt socket. The bridge remains necessary because the client-facing transport is WebSocket-based.
 
+If direct FQDN access with no helper is a hard requirement, the decision point is not "which bridge should we use?" but "which Cloudflare product owns the public edge?" In Cloudflare's current product model, the strict no-helper options are:
+
+- use a Cloudflare-native HTTP/HTTPS path for HTTP-native applications;
+- use private hostname routing with WARP if client software is acceptable;
+- use Spectrum, not Tunnel published TCP, if you need a native public TCP/UDP socket.
+
 ## Why `127.0.0.1:` Matters
 
 Inside `dind-host-container`, the service scripts use:

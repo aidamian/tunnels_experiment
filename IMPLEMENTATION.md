@@ -37,6 +37,45 @@ Build a reproducible demo showing that:
 - The client side therefore needs a TCP-to-WebSocket bridge.
 - This repository uses its own Python bridge, not client-side `cloudflared`.
 
+### Protocol invariants
+- A native PostgreSQL, Bolt, or other TCP client requires a native TCP edge if the goal is truly no-bridge.
+- HTTP/HTTPS and native database protocols are not interchangeable.
+- Cloudflare Tunnel published TCP applications expose TCP over a WebSocket-based client path, not a native public TCP socket.
+- Therefore the current published Tunnel TCP hostnames cannot satisfy a strict no-helper FQDN requirement for PostgreSQL or Bolt.
+
+### No-bridge research snapshot
+- Strict requirement:
+  - client uses only FQDN plus native protocol
+  - no local Python bridge
+  - no client-side `cloudflared`
+  - no WARP client
+- Current repo state:
+  - Neo4j HTTPS already satisfies the direct-FQDN requirement because it is HTTP-native.
+  - Neo4j Bolt and PostgreSQL do not satisfy it because the current Tunnel TCP model requires a client-side transport adapter.
+- Cloudflare-native paths:
+  - Tunnel published applications:
+    - works directly for HTTP/HTTPS
+    - does not provide a native public TCP socket for PostgreSQL or Bolt
+  - Tunnel private networking with private hostnames:
+    - removes the Python bridge
+    - still requires WARP or another Cloudflare One on-ramp, so it is not a strict no-helper solution
+  - Spectrum:
+    - is the Cloudflare product family that provides native public TCP/UDP edges
+    - should be treated as the real Cloudflare analogue for ngrok-style TCP/UDP exposure
+    - requires a topology change away from the current published-Tunnel-TCP assumption
+
+### Short no-bridge plan
+1. Stop trying to make published Tunnel TCP hostnames behave like native PostgreSQL or Bolt sockets. They do not.
+2. Decide whether client software is acceptable:
+   - if yes, evaluate private hostname routing with WARP and remove the local Python bridge
+   - if no, move the TCP/UDP public edge to Spectrum instead of Tunnel
+3. Treat Spectrum migration as an architecture change, not a small patch:
+   - public edge becomes native TCP/UDP
+   - backend connectivity must use a Spectrum-compatible origin path, not the current Tunnel TCP published app model
+4. Keep HTTP facades application-specific only:
+   - PostgREST, Hyperdrive-backed APIs, pgAdmin, or custom HTTPS layers may be useful for web access
+   - they are not universal replacements for native PostgreSQL clients such as DBeaver
+
 ### Runtime files
 - `.runtime/dind.env`
   - DinD-only runtime file
@@ -87,6 +126,7 @@ The operator-focused host-testing path is:
 - Use `docker compose config -q` to validate Compose without printing secret-expanded config.
 - Use `./start_e2e.sh` for the normal integration path.
 - Use `python3 src/utils/smoke_test.py --run-ts ...` for report validation when debugging.
+- For architecture research, verify claims against current Cloudflare primary-source docs before changing the repo objective or topology.
 
 ## Definition Of Done
 - `python3 src/utils/prepare_runtime.py` succeeds against the local `tunnels.json`.

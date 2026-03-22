@@ -14,6 +14,30 @@ Read these files before making non-trivial changes:
 - `IMPLEMENTATION.md`: architecture, operating rules, validation commands, critic checklist, and script inventory.
 - `_logs/YYMMDD_HHMMSS_*.md`: timestamped iteration summaries.
 
+## First-Principles Reasoning
+Before proposing architecture changes, start from protocol and product invariants instead of feature-name analogies.
+
+1. Define the client contract precisely.
+   - `No-bridge` means a normal client points at an FQDN and speaks its native protocol directly.
+   - Any requirement for a local Python bridge, client-side `cloudflared`, or WARP is not `no-bridge`.
+2. Trace the full path end to end.
+   - Client protocol at the edge
+   - Cloudflare on-ramp product
+   - Cloudflare internal transport
+   - Cloudflare off-ramp product
+   - Origin protocol
+3. Preserve protocol identity.
+   - HTTP/HTTPS and native PostgreSQL/Bolt/TCP are not interchangeable.
+   - A public hostname that fronts TCP-over-WebSocket is not the same thing as a public native TCP socket.
+4. Separate Cloudflare product families.
+   - Tunnel published applications
+   - Tunnel private-network routing with WARP
+   - Spectrum native TCP/UDP proxying
+   - Load Balancing and private-network off-ramps
+5. Reject wishful equivalence.
+   - Do not assume Cloudflare Tunnel is the same product shape as ngrok TCP/UDP endpoints.
+   - Validate each claim against current primary-source Cloudflare documentation before changing the repo design.
+
 ## Builder-Critic Loop
 1. Builder pass: read `IMPLEMENTATION.md` and complete one coherent change at a time.
 2. Validation pass: run the relevant commands listed in `IMPLEMENTATION.md`.
@@ -29,6 +53,8 @@ Read these files before making non-trivial changes:
   - tunnel 2: Neo4j Bolt/TCP
   - tunnel 3: PostgreSQL TCP
   - tunnel 4: reserved and unused by the automated experiment
+- For no-bridge research, only count a solution as valid if the client can use the FQDN with its native protocol and no extra client helper.
+- Do not describe an HTTP facade, REST proxy, or web UI as a universal replacement for native PostgreSQL or Bolt access.
 - Stop and fix immediately if a validation command fails. Do not continue with a broken milestone.
 - Keep orchestration reproducible with `docker compose`, scripts, and tracked markdown. Avoid relying on undocumented one-off container state.
 - Prefer official images and primary-source documentation for Cloudflare Tunnel, Docker, Neo4j, PostgreSQL, and Codex workflow behavior.
