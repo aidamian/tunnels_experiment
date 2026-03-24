@@ -208,10 +208,16 @@ __marimo__/
 
 
 tunnels.json
+servers/tunnels.json
 
 LOCAL_TODO.md
 
 .runtime/
 _logs/*.json
 _logs/raw/*
-!_logs/raw/.gitkeep
+clients/.venv/
+clients/_logs/raw/*
+!clients/_logs/raw/.gitkeep
+servers/.runtime/
+servers/_logs/raw/*
+!servers/_logs/raw/.gitkeep

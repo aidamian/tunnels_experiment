@@ -1,72 +1,72 @@
 # AGENTS.md
 
 ## Purpose
-This repository exists to demonstrate Cloudflare Tunnel access to services running inside a single Docker-in-Docker host, with a Python consumer on the real machine that proves those tunnels work end to end.
 
-The intended steady-state topology is:
-- `dind-host-container`: the single top-level Docker-in-Docker (DinD) container.
-- `neo4j-demo`: a direct child container started by the DinD host and exposed through two tunnels: HTTPS and Bolt/TCP.
-- `postgres-demo`: a direct child container started by the DinD host and exposed through one TCP tunnel.
-- `src/experiment_runner.py`: the host-side Python consumer that reaches those services through the public tunnel hostnames and host-side local TCP bridges.
+This repository demonstrates Cloudflare Tunnel access to services running inside a single Docker-in-Docker host, with a Python client on the real machine proving those tunnels work end to end.
 
 ## Durable Memory
-Read these files before making non-trivial changes:
-- `IMPLEMENTATION.md`: architecture, operating rules, validation commands, critic checklist, and script inventory.
-- `_logs/YYMMDD_HHMMSS_*.md`: timestamped iteration summaries.
 
-## First-Principles Reasoning
-Before proposing architecture changes, start from protocol and product invariants instead of feature-name analogies.
+Read these files before making non-trivial changes:
+
+- `IMPLEMENTATION.md`
+- `PLAN.md` when a refactor is in progress
+- `_logs/YYMMDD_HHMMSS_*.md`
+
+## Steady-State Topology
+
+- `servers/docker-compose.yml`
+  - defines the single top-level `dind-host-container`
+- `servers/docker/dind/servers/neo4j.sh`
+  - starts `neo4j-demo` and its HTTPS and Bolt tunnels
+- `servers/docker/dind/servers/pgsql.sh`
+  - starts `postgres-demo` and its TCP tunnel
+- `clients/src/experiment_runner.py`
+  - host-side proof runner
+- `clients/services.json`
+  - client-side public service catalog and local bridge defaults
+
+## First-Principles Rules
 
 1. Define the client contract precisely.
    - `No-bridge` means a normal client points at an FQDN and speaks its native protocol directly.
    - Any requirement for a local Python bridge, client-side `cloudflared`, or WARP is not `no-bridge`.
-2. Trace the full path end to end.
-   - Client protocol at the edge
-   - Cloudflare on-ramp product
-   - Cloudflare internal transport
-   - Cloudflare off-ramp product
-   - Origin protocol
-3. Preserve protocol identity.
+2. Preserve protocol identity.
    - HTTP/HTTPS and native PostgreSQL/Bolt/TCP are not interchangeable.
-   - A public hostname that fronts TCP-over-WebSocket is not the same thing as a public native TCP socket.
-4. Separate Cloudflare product families.
+3. Separate Cloudflare product families.
    - Tunnel published applications
    - Tunnel private-network routing with WARP
    - Spectrum native TCP/UDP proxying
-   - Load Balancing and private-network off-ramps
-5. Reject wishful equivalence.
-   - Do not assume Cloudflare Tunnel is the same product shape as ngrok TCP/UDP endpoints.
-   - Validate each claim against current primary-source Cloudflare documentation before changing the repo design.
+4. Reject wishful equivalence.
+   - Cloudflare Tunnel published TCP hostnames are not native public PostgreSQL or Bolt sockets.
 
 ## Builder-Critic Loop
-1. Builder pass: read `IMPLEMENTATION.md` and complete one coherent change at a time.
-2. Validation pass: run the relevant commands listed in `IMPLEMENTATION.md`.
-3. Critic pass: use the checklist in `IMPLEMENTATION.md` to look for regressions, secret leaks, missing verification, and topology drift.
-4. Documentation pass: update `IMPLEMENTATION.md` when the supported architecture or workflow changes, and append a timestamped summary under `_logs/`.
-5. Only then move to the next milestone.
+
+1. Builder pass: read `IMPLEMENTATION.md` and complete one coherent change.
+2. Validation pass: run the relevant commands listed there.
+3. Critic pass: check separation, topology, secrets, and verification.
+4. Documentation pass: update `IMPLEMENTATION.md`, `README.md`, and append a timestamped summary under root `_logs/`.
 
 ## Guardrails
-- `tunnels.json` contains live tunnel tokens. Never print, commit, or copy those tokens into tracked files.
-- Use `src/utils/prepare_runtime.py` to generate `.runtime/dind.env` and `.runtime/public_hosts.json`. Treat `.runtime/` as disposable runtime state.
-- The tunnel-role mapping is fixed unless `IMPLEMENTATION.md` is explicitly updated:
+
+- `servers/tunnels.json` contains live tunnel tokens. Never print, commit, or copy those tokens into tracked files.
+- `servers/src/utils/prepare_runtime.py` generates `servers/.runtime/dind.env`.
+- `clients/services.json` is client-owned and must drive client bridge defaults.
+- No sharing of runtime files or raw-log folders between `servers/` and `clients/` is permitted.
+- Root `_logs/` is for tracked markdown only, not active runtime output.
+- The tunnel-role mapping is fixed unless `IMPLEMENTATION.md` is intentionally updated:
   - tunnel 1: Neo4j HTTPS
   - tunnel 2: Neo4j Bolt/TCP
   - tunnel 3: PostgreSQL TCP
   - tunnel 4: reserved and unused by the automated experiment
-- For no-bridge research, only count a solution as valid if the client can use the FQDN with its native protocol and no extra client helper.
-- Do not describe an HTTP facade, REST proxy, or web UI as a universal replacement for native PostgreSQL or Bolt access.
-- Stop and fix immediately if a validation command fails. Do not continue with a broken milestone.
-- Keep orchestration reproducible with `docker compose`, scripts, and tracked markdown. Avoid relying on undocumented one-off container state.
-- Prefer official images and primary-source documentation for Cloudflare Tunnel, Docker, Neo4j, PostgreSQL, and Codex workflow behavior.
-- Keep `_logs/*.md` summaries tracked and `_logs/*.log` runtime logs untracked.
+- Keep orchestration reproducible with `docker compose`, scripts, and tracked markdown.
 
 ## Definition Of Done
-The project is only complete when all of the following hold:
-- `python3 src/utils/prepare_runtime.py` succeeds against the local `tunnels.json`.
-- `docker compose up --build -d` brings up the single top-level `dind-host-container`.
-- The host-side experiment can prove all of these paths work:
+
+- `python3 servers/src/utils/prepare_runtime.py` succeeds against `servers/tunnels.json`
+- `docker compose --project-directory servers -f servers/docker-compose.yml up --build -d` brings up the single top-level `dind-host-container`
+- the host-side experiment proves:
   - Neo4j over public HTTPS
-  - Neo4j over Bolt through the host-side local TCP bridge
-  - PostgreSQL over TCP through the host-side local TCP bridge
-- The top-level Compose service publishes no ports to the real machine.
-- `IMPLEMENTATION.md` and the current timestamped `_logs/*.md` summary reflect the final verified state.
+  - Neo4j over Bolt through the client-side local bridge
+  - PostgreSQL over TCP through the client-side local bridge
+- the top-level Compose service publishes no ports to the real machine
+- `IMPLEMENTATION.md` and the current timestamped root `_logs/*.md` summary reflect the verified state

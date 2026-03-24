@@ -77,9 +77,13 @@ Follow these steps in order. Do not skip ahead.
    - In the target zone, confirm you can find:
      - Spectrum
      - Load Balancing
-   - In Zero Trust, confirm you can find:
-     - Networks -> Tunnels
-     - Virtual networks or the equivalent private-network routing area
+   - In the Cloudflare dashboard and Zero Trust dashboard, confirm you can
+     find the Tunnel and private-network areas mentioned in the current docs:
+     - main dashboard:
+       - `Networking -> Tunnels`
+     - Zero Trust dashboard:
+       - `Networks -> Connectors -> Cloudflare Tunnels`
+       - `Settings -> WARP Client -> Virtual networks`
    - If any of those are missing, stop here and ask the account owner or
      Cloudflare account team to enable them.
 5. If Zero Trust private networking has never been initialized on this account,
@@ -90,13 +94,24 @@ Follow these steps in order. Do not skip ahead.
      document.
    - Wait for a clear confirmation that this product shape is supported for
      PostgreSQL on `5432` and Neo4j Bolt on `7687`.
+   - Explicitly ask support to confirm that the Spectrum options needed by this
+     design are available on your current plan. Cloudflare's current
+     `Settings by plan` docs mark several Spectrum fields as Enterprise-only.
    - If support does not confirm, stop here.
 7. Copy the Cloudflare account ID.
-   - Open the Cloudflare account overview.
-   - Copy the account ID and save it somewhere local and private.
+   - Follow the current Cloudflare doc path:
+     - go to `Account home`
+     - locate your account
+     - open the menu button at the end of the account row
+     - select `Copy account ID`
+   - Save it somewhere local and private.
 8. Copy the zone ID for the target zone.
-   - Open the target zone overview.
-   - Copy the zone ID and save it somewhere local and private.
+   - Follow the current Cloudflare doc path:
+     - go to `Account home`
+     - open the target account overview
+     - scroll to the `API` section near the bottom
+     - under `Zone ID`, select `Click to copy`
+   - Save it somewhere local and private.
 9. Decide the final public hostnames.
    - Recommended:
      - PostgreSQL: `pg.<zone>`
@@ -109,21 +124,55 @@ Follow these steps in order. Do not skip ahead.
       - `off`
     - That keeps the first implementation focused on raw TCP reachability.
 11. Create a dedicated API token for this project.
-    - Open:
-      - My Profile -> API Tokens
-    - Choose:
-      - Create Custom Token
+    - First decide which token type to create:
+      - preferred if available:
+        - account-owned token
+      - fallback:
+        - user token
+    - Use an account-owned token if:
+      - you are a `Super Administrator`
+      - and your organization allows account-owned tokens
+      - and you want a durable service token not tied to one user
+    - Otherwise create a normal user token.
+    - Current Cloudflare doc paths:
+      - account-owned token:
+        - `Manage Account -> Account API Tokens`
+      - user token:
+        - `My Profile -> API Tokens`
+    - Select:
+      - `Create Token`
+      - then create a custom token
     - Give it a clear name, for example:
       - `tunnels-experiment-spectrum-plan-b`
     - Add the permissions listed in `Recommended token scopes` below.
     - Restrict the token to:
       - the correct account
       - the correct zone
+    - Leave optional IP filtering and TTL restrictions empty for the first
+      setup unless you have a specific security requirement. Over-restricting
+      the token early is a common source of avoidable failures.
 12. Copy the API token immediately and save it locally.
     - Do not put it in tracked files.
     - Do not paste it into `README.md`, `IMPLEMENTATION.md`, `_logs/`, or any
       committed file.
-13. Export the required values in your local shell, or place them in a local
+13. Verify the token works before handing anything to the agent.
+    - For a user token, use Cloudflare's documented token verification
+      endpoint:
+
+```bash
+curl "https://api.cloudflare.com/client/v4/user/tokens/verify" \
+  --header "Authorization: Bearer $CF_API_TOKEN"
+```
+
+   - For an account-owned token:
+     - there is not a single user-facing verification step documented in the
+       same way
+     - if you are using an account-owned token, it is acceptable to skip
+       manual verification here and let the agent validate it against the real
+       account and zone APIs in Phase 1
+   - If you ran the user-token verification command, continue only if the
+     response says the token is active.
+14. Export the required values in your local shell, or place them in a local
     untracked shell file.
     - Minimum required values:
 
@@ -137,11 +186,11 @@ export CF_NEO4J_BOLT_HOST=neo4j-bolt.example.com
 export CF_SPECTRUM_TLS_MODE=off
 ```
 
-14. Double-check the values before handing off to the agent.
+15. Double-check the values before handing off to the agent.
     - `CF_ACCOUNT_ID` must match the Cloudflare account that owns the zone.
     - `CF_ZONE_ID` must match the zone where the public hostnames will live.
     - `CF_PG_HOST` and `CF_NEO4J_BOLT_HOST` must belong to that zone.
-15. Once all of the above is done, the user handoff is complete.
+16. Once all of the above is done, the user handoff is complete.
     - At that point the agent should be able to do nearly all remaining work.
 
 ### Required user-provided values
@@ -170,17 +219,33 @@ policy complexity.
 
 Create one API token that can do the entire control-plane setup.
 
+Use the Cloudflare dashboard labels below. In API docs, the same permissions
+may appear as `Write` instead of `Edit`.
+
 Minimum expected scopes:
 
 - Account:
-  - `Cloudflare Tunnel Edit`
-  - `Cloudflare One Connectors Write`
-  - `Cloudflare One Networks Write`
-  - `Load Balancing: Monitors and Pools Write`
+  - `Cloudflare Tunnel -> Edit`
+    - API name: `Cloudflare Tunnel Write`
+  - `Cloudflare One Connectors -> Edit`
+    - API name: `Cloudflare One Connectors Write`
+  - `Cloudflare One Networks -> Edit`
+    - API name: `Cloudflare One Networks Write`
+  - `Load Balancing: Monitors and Pools -> Edit`
+    - API name: `Load Balancing: Monitors and Pools Write`
 - Zone:
-  - `Load Balancers Write`
-  - `Zone Settings Write`
-  - `Zone DNS Edit`
+  - `Load Balancers -> Edit`
+    - API name: `Load Balancers Write`
+  - `Zone Settings -> Edit`
+    - API name: `Zone Settings Write`
+
+Optional but useful zone scope:
+
+- Zone:
+  - `DNS -> Edit`
+    - API name: `DNS Write`
+    - only needed if we end up creating or modifying standalone DNS records
+      outside the load balancer / Spectrum resource flows
 
 If the account uses finer-grained or renamed permissions, the safe rule is:
 

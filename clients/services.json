@@ -1,0 +1,30 @@
+[
+  {
+    "key": "neo4j_https",
+    "service": "Neo4J HTTPS Access",
+    "type": "https",
+    "url": "https://c74d8a4e03e6.ratio1.link"
+  },
+  {
+    "key": "neo4j_bolt",
+    "service": "Neo4J Bolt",
+    "type": "bolt",
+    "url": "99c7e7089d1b.ratio1.link",
+    "bridge": {
+      "local_host": "127.0.0.1",
+      "local_port": 57687,
+      "purpose": "Neo4j Bolt local TCP listener for Bolt drivers"
+    }
+  },
+  {
+    "key": "postgres",
+    "service": "PostgreSQL",
+    "type": "tcp",
+    "url": "60bf15690490.ratio1.link",
+    "bridge": {
+      "local_host": "127.0.0.1",
+      "local_port": 55432,
+      "purpose": "PostgreSQL local TCP listener for DBeaver-style clients"
+    }
+  }
+]
