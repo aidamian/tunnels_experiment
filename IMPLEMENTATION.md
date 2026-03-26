@@ -1,65 +1,66 @@
 # IMPLEMENTATION.md
 
 ## Role
-This file is the source of truth for architecture, workflow, validation, and operational guardrails.
+This file is the source of truth for the current architecture, workflow, validation, and guardrails.
 
 ## Status
 
-- Phase: verified working demo after the client/server separation refactor
-- Current objective: keep the topology reproducible while enforcing strict separation of concerns
+- Phase: verified two-host DinD topology with an app-side bridge-backed pgAdmin flow
+- Latest verified host-side proof run: `260326_225326`
+- Latest verified app-side bridge/UI run: `260326_230816`
 
 ## Objective
 
 Build a reproducible demo showing that:
 
-- one top-level Docker-in-Docker host container runs all outbound Cloudflare Tunnel connectors
-- Neo4j and PostgreSQL run as direct child containers of that DinD host
-- no service port is published from the top-level DinD host container to the real machine
-- a Python client running directly on the real machine reaches those services only through the public hostnames and host-side local TCP bridges
+- `dind-host-server` runs origin services and their Cloudflare Tunnel connectors
+- server startup can be limited to specific origin services with `ENABLED_SERVICES`
+- `dind-host-app` can run a local Python bridge that talks to the public PostgreSQL tunnel hostname
+- a child app container inside `dind-host-app` can connect to that bridge as if PostgreSQL were local
+- `dind-host-app` can publish that app container over a separate HTTPS tunnel
+- no top-level DinD host publishes service ports to the real machine
+- the original real-machine Python client proof path still works
 
 ## Architecture
 
 ### Worlds
 
 - `servers/`
-  - `docker-compose.yml`
-  - `docker/dind/`
-  - `tunnels.json`
-  - `.runtime/dind.env`
-  - `_logs/raw/`
+  - owns the origin DinD host, server tunnel inventory, server runtime env, and server raw logs
+
+- `apps/`
+  - owns the app DinD host, app bridge code, app runtime env, and app raw logs
 
 - `clients/`
-  - `services.json`
-  - `requirements.txt`
-  - `src/`
-  - `.venv/`
-  - `_logs/raw/`
+  - owns the real-machine Python proof client, `clients/services.json`, client virtualenv inputs, and client raw logs
 
 - root
-  - `start_e2e.sh`
-  - `start_host.sh`
-  - `Makefile`
-  - `_logs/`
-    - tracked markdown docs only
+  - owns orchestration scripts, tracked docs, and tracked markdown summaries only
 
 ### Separation Rules
 
-- client code does not import from `servers/`
-- server code does not import from `clients/`
-- client code does not read `servers/.runtime/` or `servers/_logs/raw/`
-- server code does not read `clients/services.json` or `clients/_logs/raw/`
-- root scripts may coordinate both worlds, but they must not create a new shared runtime folder at repo root
+- client code does not import from `servers/` or `apps/`
+- app code does not import from `servers/` or `clients/`
+- server code does not import from `clients/` or `apps/`
+- client code does not read `servers/.runtime/`, `servers/_logs/raw/`, `apps/.runtime/`, or `apps/_logs/raw/`
+- app code does not read `servers/tunnels.json`, `servers/_logs/raw/`, or `clients/services.json`
+- server code does not read `clients/services.json`, `clients/_logs/raw/`, `apps/.runtime/`, or `apps/_logs/raw/`
+- root scripts may coordinate worlds by passing CLI arguments or environment values, but they must not create a shared runtime directory at repo root
 
 ### Topology
 
-- top-level Compose service:
-  - `dind-host-container`
+- top-level Compose services:
+  - `dind-host-server`
+  - `dind-host-app`
 
-- direct child containers started by `dind-host-container`:
-  - `neo4j-demo`
-  - `postgres-demo`
+- direct child containers started by `dind-host-server`:
+  - `neo4j-demo` when `ENABLED_SERVICES` includes `neo4j`
+  - `postgres-demo` when `ENABLED_SERVICES` includes `pgsql`
 
-- host-side client:
+- direct child containers started by `dind-host-app`:
+  - `pgadmin-demo`
+
+- real-machine client:
   - `clients/src/experiment_runner.py`
 
 ### Tunnel Assignment
@@ -67,35 +68,53 @@ Build a reproducible demo showing that:
 - tunnel 1 -> Neo4j HTTPS
 - tunnel 2 -> Neo4j Bolt/TCP
 - tunnel 3 -> PostgreSQL TCP
-- tunnel 4 -> reserved and unused by the automated experiment
+- tunnel 4 -> app HTTPS UI
 
 ### Transport Model
 
 - `cloudflared tunnel run --url http://127.0.0.1:17474` publishes Neo4j HTTP in normal HTTP proxy mode
 - `cloudflared tunnel run --url tcp://127.0.0.1:17687` publishes Neo4j Bolt in Cloudflare TCP mode
 - `cloudflared tunnel run --url tcp://127.0.0.1:15432` publishes PostgreSQL in Cloudflare TCP mode
-- published Tunnel TCP applications still require a client-side TCP-to-WebSocket bridge
-- this repository implements that bridge in Python under `clients/src/bridge/universal.py`
+- `cloudflared tunnel run --url http://127.0.0.1:18080` publishes the app UI in normal HTTP proxy mode
+- published Tunnel TCP applications still require a TCP-to-WebSocket bridge on the consumer side
+- the real-machine client bridge lives in `clients/src/bridge/universal.py`
+- the app-host bridge lives in `apps/src/bridge/universal.py`
+- `pgadmin-demo` uses `--network host` inside `dind-host-app`, so `127.0.0.1:55432` refers to the bridge in the app DinD host, not the real machine
+
+### Runtime Generation
+
+- server runtime generation:
+  - `python3 servers/src/utils/prepare_runtime.py [--enabled-services ...]`
+  - writes `servers/.runtime/dind.env`
+  - derives public hosts and tunnel tokens for all four tunnel roles
+
+- app runtime generation:
+  - `python3 apps/src/utils/prepare_runtime.py ...`
+  - writes `apps/.runtime/dind.env`
+  - is driven by root orchestration after server runtime generation
+  - receives only the derived values needed by `dind-host-app`
 
 ### Client Contract
 
-`clients/services.json` is the only client-owned service inventory.
+`clients/services.json` remains the only client-owned service inventory.
 
 It defines:
 
-- public hostname or URL
-- service key
-- service type
-- bridge defaults for TCP-backed services
+- stable service keys
+- public hostnames or URLs
+- which client-visible services require local bridges
+- default client-side local bridge ports
 - operator-facing bridge purpose text
-
-The manual bridge CLI and automated experiment both source bridge targets and default local ports from this file.
 
 ### Runtime Artifacts
 
 - server runtime:
   - `servers/.runtime/dind.env`
   - `servers/_logs/raw/*`
+
+- app runtime:
+  - `apps/.runtime/dind.env`
+  - `apps/_logs/raw/*`
 
 - client runtime:
   - `clients/services.json`
@@ -108,15 +127,13 @@ The manual bridge CLI and automated experiment both source bridge targets and de
 
 ## Operating Rules
 
-- keep tunnel secrets only in `servers/tunnels.json` and `servers/.runtime/dind.env`
-- treat `servers/.runtime/` as disposable server runtime state
-- treat `servers/_logs/raw/` and `clients/_logs/raw/` as disposable runtime output
-- keep `_logs/*_summary.md` tracked and `_logs/RUNLOG.md` tracked
-- do not publish any service port from the top-level DinD host container to the real machine
-- do not run `cloudflared tunnel run` anywhere except the top-level DinD host container
-- do not move the active Python client back into a container
-- do not let client code read server-generated runtime or topology files
-- do not let server code depend on client config files
+- keep source tunnel secrets only in `servers/tunnels.json`
+- treat `servers/.runtime/` and `apps/.runtime/` as ignored derived runtime state
+- keep runtime output under each world’s own `_logs/raw/`
+- keep root `_logs/` markdown-only
+- do not publish any service port from `dind-host-server` or `dind-host-app` to the real machine
+- do not run `cloudflared tunnel run` anywhere except `dind-host-server` and `dind-host-app`
+- do not move the active proof client back into a container
 - do not pretend PostgreSQL or Bolt are HTTP services
 - do not change the tunnel-role mapping without intentionally updating this document
 
@@ -124,12 +141,15 @@ The manual bridge CLI and automated experiment both source bridge targets and de
 
 - root entrypoint scripts use ANSI-colored step logs
 - server shell logs use scope-based ANSI colors in `servers/_logs/raw/*.log`
+- app shell and bridge logs use scope-based ANSI colors in `apps/_logs/raw/*.log`
 - client bridge logs use ANSI-colored `.log` streams in `clients/_logs/raw/*.log`
-- JSON reports, Markdown summaries, and env files must remain plain text
+- JSON, Markdown, and env files must remain plain text
 
 ## Expected Workflow
 
-1. `python3 servers/src/utils/prepare_runtime.py`
+### Host-side Proof Path
+
+1. `python3 servers/src/utils/prepare_runtime.py --enabled-services neo4j,pgsql`
 2. `docker volume create tunnels-experiment-persistent-service-data || true`
 3. `docker compose --project-directory servers -f servers/docker-compose.yml up --build -d`
 4. `python3 servers/src/utils/wait_for_stack.py --run-ts <RUN_TS>`
@@ -139,33 +159,64 @@ The manual bridge CLI and automated experiment both source bridge targets and de
 8. `python3 clients/src/utils/write_summary.py --run-ts <RUN_TS>`
 9. `docker compose --project-directory servers -f servers/docker-compose.yml down --remove-orphans --volumes`
 
-Default end-to-end path:
+Default host-side automation:
 
-- `./start_e2e.sh`
+- `./start_e2e.sh --duration-seconds 1`
 
-Manual bridge path:
+Manual host bridge path:
 
-- `./start_host.sh --verify`
-- `clients/.venv/bin/python clients/src/bridge/start_local_bridges.py --verify`
+- `timeout -s INT 120 ./start_host.sh --verify`
+
+### App-side Consumer Path
+
+1. `python3 servers/src/utils/prepare_runtime.py --enabled-services pgsql`
+2. derive `RUN_TS`, PostgreSQL public host, and app UI tunnel values from `servers/.runtime/dind.env`
+3. `python3 apps/src/utils/prepare_runtime.py ...`
+4. `docker compose --project-directory servers -f servers/docker-compose.yml up --build -d`
+5. `python3 servers/src/utils/wait_for_stack.py --run-ts <RUN_TS>`
+6. `docker compose --project-directory apps -f apps/docker-compose.yml up --build -d`
+7. `python3 apps/src/utils/wait_for_stack.py --run-ts <RUN_TS>`
+8. `python3 apps/src/utils/verify_public_ui.py --run-ts <RUN_TS> --timeout-seconds 10`
+9. tear down both Compose projects unless `--keep-up` was requested
+
+Default app-side automation:
+
+- `./start_apps.sh`
 
 ## Validation Discipline
 
-- run `python3 servers/src/utils/prepare_runtime.py` before Compose commands
-- use `docker compose --project-directory servers -f servers/docker-compose.yml config -q`
-- use `./start_e2e.sh --duration-seconds 1` for the normal integration path
-- use `timeout -s INT 120 ./start_host.sh --verify` for the manual bridge path
-- use `python3 clients/src/utils/smoke_test.py --run-ts ...` for report validation
+- static checks:
+  - `bash -n start_e2e.sh start_host.sh start_apps.sh`
+  - `python3 -m compileall clients/src servers/src apps/src`
+  - `docker compose --project-directory servers -f servers/docker-compose.yml config -q`
+  - `docker compose --project-directory apps -f apps/docker-compose.yml config -q` after app runtime generation
+
+- host-side functional proof:
+  - `./start_e2e.sh --duration-seconds 1`
+
+- app-side functional proof:
+  - `./start_apps.sh --keep-up`
+  - `python3 apps/src/utils/verify_public_ui.py --run-ts <RUN_TS> --timeout-seconds 10`
+  - `docker inspect dind-host-server --format '{{json .NetworkSettings.Ports}}'`
+  - `docker inspect dind-host-app --format '{{json .NetworkSettings.Ports}}'`
 
 ## Definition Of Done
 
 - `python3 servers/src/utils/prepare_runtime.py` succeeds against `servers/tunnels.json`
-- `docker compose --project-directory servers -f servers/docker-compose.yml up --build -d` brings up only `dind-host-container`
-- `docker inspect dind-host-container --format '{{json .NetworkSettings.Ports}}'` shows no host bindings
-- Neo4j HTTPS works through the public hostname
-- Neo4j Bolt works through the client-side local bridge defined by `clients/services.json`
-- PostgreSQL works through the client-side local bridge defined by `clients/services.json`
-- the host-side experiment writes and reads timestamped proof records in both databases
+- `python3 apps/src/utils/prepare_runtime.py` succeeds when given the derived server values
+- `./start_e2e.sh --duration-seconds 1` still proves:
+  - Neo4j over public HTTPS
+  - Neo4j Bolt through the client-side local bridge
+  - PostgreSQL through the client-side local bridge
+- `./start_apps.sh` proves:
+  - `dind-host-server` can start only `pgsql`
+  - `dind-host-app` can connect to the public PostgreSQL tunnel through its local Python bridge
+  - `pgadmin-demo` can reach PostgreSQL through that bridge
+  - the public app UI responds over tunnel 4
+- `docker inspect dind-host-server --format '{{json .NetworkSettings.Ports}}'` shows only null bindings
+- `docker inspect dind-host-app --format '{{json .NetworkSettings.Ports}}'` shows only null bindings
 - server runtime artifacts stay under `servers/`
+- app runtime artifacts stay under `apps/`
 - client runtime artifacts stay under `clients/`
 - repo-level markdown logs stay under root `_logs/`
 - this file and the latest root `_logs/*_summary.md` match the verified state
@@ -177,77 +228,38 @@ Manual bridge path:
 - no tunnel token appears in tracked markdown or tracked config
 - `servers/tunnels.json` remains ignored
 - `servers/.runtime/` remains ignored
+- `apps/.runtime/` remains ignored
 
 ### Separation
 
-- no client file reads `servers/.runtime/`
-- no client file reads `servers/_logs/raw/`
-- no server file reads `clients/services.json`
-- no server file reads `clients/_logs/raw/`
-- the DinD image build context stays under `servers/`
+- no client file reads server or app runtime/log folders
+- no app file reads `servers/tunnels.json` or client-owned runtime files
+- no server file reads client or app runtime files
+- the server DinD image build context stays under `servers/`
+- the app DinD image build context stays under `apps/`
 
 ### Topology
 
-- Compose defines exactly one top-level service: `dind-host-container`
-- `dind-host-container` publishes no ports to the real machine
-- Neo4j runs inside `neo4j-demo` as a direct child container of the DinD host
-- PostgreSQL runs inside `postgres-demo` as a direct child container of the DinD host
-- `cloudflared tunnel run` exists only inside `dind-host-container`
-- the active Python client runs directly on the real machine
+- Compose defines exactly two top-level services overall:
+  - `dind-host-server`
+  - `dind-host-app`
+- neither top-level service publishes ports to the real machine
+- `cloudflared tunnel run` exists only inside the two top-level DinD hosts
+- server service selection is driven by `ENABLED_SERVICES`
+- `pgadmin-demo` reaches PostgreSQL through the app-host bridge, not through direct network sharing between the two DinD hosts
 
 ### Functional Proof
 
-- Neo4j HTTPS is verified over the public hostname
-- Neo4j Bolt is verified through the local bridge and a real driver query
-- PostgreSQL is verified through the local bridge and a real SQL query
-- the latest generated report shows `all_ok: true`
+- the latest host-side generated report shows `all_ok: true`
+- the latest app-side topology marker shows:
+  - `postgres_bridge`
+  - `pgadmin_http`
+  - `app_ui_https`
+- the latest public app UI verification returns success
 
 ### Operational Quality
 
-- `bash -n start_e2e.sh start_host.sh` passes
-- `python3 -m compileall clients/src servers/src` passes
-- `docker compose --project-directory servers -f servers/docker-compose.yml config -q` passes
+- `bash -n start_e2e.sh start_host.sh start_apps.sh` passes
+- `python3 -m compileall clients/src servers/src apps/src` passes
 - `./start_e2e.sh --duration-seconds 1` passes
-- `timeout -s INT 120 ./start_host.sh --verify` proves the manual bridge workflow
-
-## Script Inventory
-
-- `start_e2e.sh`
-  - purpose: full automated end-to-end workflow
-  - status: Keep
-
-- `start_host.sh`
-  - purpose: start the stack and hold the manual bridges in the foreground
-  - status: Keep
-
-- `servers/src/utils/prepare_runtime.py`
-  - purpose: generate `servers/.runtime/dind.env`
-  - status: Keep
-
-- `servers/src/utils/wait_for_stack.py`
-  - purpose: wait for the DinD topology-ready marker
-  - status: Keep
-
-- `clients/src/experiment_runner.py`
-  - purpose: run the host-side proof workload
-  - status: Keep
-
-- `clients/src/bridge/universal.py`
-  - purpose: reusable TCP-to-WebSocket bridge
-  - status: Keep
-
-- `clients/src/bridge/start_local_bridges.py`
-  - purpose: manual bridge CLI driven by `clients/services.json`
-  - status: Keep
-
-- `clients/src/simulators/postgres.py`
-  - purpose: PostgreSQL proof and manual verification
-  - status: Keep
-
-- `clients/src/simulators/neo4j_bolt.py`
-  - purpose: Neo4j Bolt proof and manual verification
-  - status: Keep
-
-- `clients/src/simulators/neo4j_https.py`
-  - purpose: Neo4j HTTPS proof
-  - status: Keep
+- `python3 apps/src/utils/verify_public_ui.py --run-ts 260326_230816 --timeout-seconds 10` passes

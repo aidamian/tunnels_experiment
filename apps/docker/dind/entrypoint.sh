@@ -1,15 +1,7 @@
 #!/bin/bash
 set -Eeuo pipefail
 
-# This is the top-level DinD host entrypoint for dind-host-server.
-#
-# Its job is intentionally narrow:
-# 1. start the nested Docker daemon inside dind-host-server;
-# 2. wait until the Docker CLI can talk to that daemon;
-# 3. hand control to the generic orchestrator that discovers and supervises the
-#    child service scripts.
-
-base_dir="/opt/tunnel-demo"
+base_dir="/opt/tunnel-app"
 source "${base_dir}/lib/common.sh"
 
 managed_pids=()
@@ -32,8 +24,6 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 start_dockerd() {
-  # dockerd writes its own detailed log to a dedicated file so the main console
-  # stream stays readable while preserving low-level diagnostics.
   log_with_scope "entrypoint" "starting nested Docker daemon"
   dockerd \
     --storage-driver=vfs \
@@ -48,14 +38,12 @@ start_dockerd() {
 main() {
   local orchestrator_pid
 
-  # Force all nested Docker commands to use the private Unix socket inside this
-  # container, never the real machine's Docker daemon.
   export DOCKER_HOST="unix:///var/run/docker.sock"
   export DOCKER_TLS_CERTDIR=""
 
   start_dockerd
-  log_with_scope "entrypoint" "starting service orchestration"
-  /usr/local/bin/tunnel-demo-orchestrator.sh "$@" &
+  log_with_scope "entrypoint" "starting app orchestration"
+  /usr/local/bin/tunnel-app-orchestrator.sh "$@" &
   orchestrator_pid="$!"
   managed_pids+=("${orchestrator_pid}")
   wait "${orchestrator_pid}"

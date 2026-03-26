@@ -110,8 +110,8 @@ def main() -> int:
   report_path = raw_logs_dir / f"{run_id}_experiment_report.json"
 
   topology = {
-    "top_level_container": "dind-host-container",
-    "top_level_service": "dind-host-container",
+    "top_level_container": "dind-host-server",
+    "top_level_service": "dind-host-server",
     "managed_service_containers": ["neo4j-demo", "postgres-demo"],
     "public_hosts": public_hosts,
     "services": [service.to_dict() for service in services],

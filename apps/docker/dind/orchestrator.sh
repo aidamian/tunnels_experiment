@@ -1,14 +1,7 @@
 #!/bin/bash
 set -Eeuo pipefail
 
-# The orchestrator owns the overall startup order for the DinD host.
-#
-# The key rule for this file is that it must stay agnostic to which services
-# exist. It discovers every `*.sh` file under /opt/tunnel-demo/servers, starts
-# each one, waits for its ready marker, and then writes a single aggregated
-# topology snapshot for the host-side tooling.
-
-base_dir="/opt/tunnel-demo"
+base_dir="/opt/tunnel-app"
 source "${base_dir}/lib/common.sh"
 
 service_pids=()
@@ -36,8 +29,6 @@ discover_service_scripts() {
   local script_path
   local discovered_keys=()
 
-  # nullglob keeps an empty services directory from expanding to a literal
-  # "*.sh", which lets us fail clearly when no services are packaged.
   shopt -s nullglob
   for script_path in "${base_dir}"/servers/*.sh; do
     local service_key
@@ -52,11 +43,11 @@ discover_service_scripts() {
   shopt -u nullglob
 
   if [[ "${#service_scripts[@]}" -eq 0 ]]; then
-    log_with_scope "orchestrator" "no service scripts were found under ${base_dir}/servers"
+    log_with_scope "orchestrator" "no enabled app service scripts were found under ${base_dir}/servers"
     return 1
   fi
 
-  log_with_scope "orchestrator" "discovered service scripts: ${discovered_keys[*]}"
+  log_with_scope "orchestrator" "discovered app service scripts: ${discovered_keys[*]}"
 }
 
 start_service_scripts() {
@@ -70,7 +61,7 @@ start_service_scripts() {
     script_path="${service_scripts[${index}]}"
     logfile="$(service_console_log_for_service "${service_key}")"
 
-    log_with_scope "orchestrator" "starting service script ${script_path} for service key ${service_key}"
+    log_with_scope "orchestrator" "starting app service script ${script_path} for service key ${service_key}"
     "${script_path}" > >(tee -a "${logfile}") 2>&1 &
     service_pids+=("$!")
   done
@@ -80,7 +71,6 @@ wait_for_service_markers() {
   local service_key
   local ready_file
 
-  # Every service script writes ${RUN_TS}_${service_key}_service_ready.json.
   for service_key in "${service_keys[@]}"; do
     ready_file="$(ready_file_for_service "${service_key}")"
     wait_until "orchestrator" "service marker for ${service_key}" 90 2 jq -e '.ready == true' "${ready_file}"
@@ -94,11 +84,8 @@ wait_for_local_origins() {
   local bind_host
   local bind_port
 
-  # Read the loopback binds back from the ready marker instead of hard-coding
-  # them here. That keeps the orchestrator generic.
   for service_key in "${service_keys[@]}"; do
     ready_file="$(ready_file_for_service "${service_key}")"
-
     while IFS= read -r bind_target; do
       [[ -z "${bind_target}" ]] && continue
       bind_host="${bind_target%:*}"
@@ -116,8 +103,6 @@ write_topology_ready_file() {
     ready_files+=("$(ready_file_for_service "${service_key}")")
   done
 
-  # The aggregated topology keeps a generic list of services, plus merged maps
-  # that preserve compatibility with the current reporting scripts.
   jq -s \
     --arg run_id "${RUN_TS}" \
     '{
@@ -125,7 +110,7 @@ write_topology_ready_file() {
       all_ready: true,
       published_ports_on_top_level_container: [],
       topology: {
-        top_level_service: "dind-host-server",
+        top_level_service: "dind-host-app",
         managed_service_containers: [.[].container_name],
         local_origins_inside_dind_host: (reduce .[] as $service ({}; . + ($service.local_origin_map // {}))),
         public_hosts: (reduce .[] as $service ({}; . + ($service.public_host_map // {}))),
@@ -135,7 +120,8 @@ write_topology_ready_file() {
             service_name,
             container_name,
             local_origins,
-            public_endpoints
+            public_endpoints,
+            dependencies
           }
         ]
       }
@@ -162,7 +148,7 @@ main() {
   wait_for_service_markers
   wait_for_local_origins
   write_topology_ready_file
-  log_with_scope "orchestrator" "topology startup complete"
+  log_with_scope "orchestrator" "app topology startup complete"
   supervise
 }
 

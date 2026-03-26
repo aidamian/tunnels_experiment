@@ -5,7 +5,7 @@ set -Eeuo pipefail
 # 1. start the Neo4j child container inside the DinD host;
 # 2. wait until Neo4j accepts authenticated Cypher queries;
 # 3. start the HTTP and Bolt tunnels that point at loopback-only origins inside
-#    dind-host-container;
+#    dind-host-server;
 # 4. publish a generic ready marker that the orchestrator can consume without
 #    any Neo4j-specific hard-coding.
 
@@ -52,7 +52,7 @@ start_container() {
     log_with_scope "${scope}" "initializing new Neo4j data directory at ${data_dir}"
   fi
 
-  # These binds target 127.0.0.1 inside dind-host-container, not the real
+  # These binds target 127.0.0.1 inside dind-host-server, not the real
   # machine. That means only local processes inside the DinD host, such as
   # cloudflared, can reach the service directly.
   docker run -d \

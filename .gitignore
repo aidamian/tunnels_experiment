@@ -218,6 +218,9 @@ _logs/raw/*
 clients/.venv/
 clients/_logs/raw/*
 !clients/_logs/raw/.gitkeep
+apps/.runtime/
+apps/_logs/raw/*
+!apps/_logs/raw/.gitkeep
 servers/.runtime/
 servers/_logs/raw/*
 !servers/_logs/raw/.gitkeep

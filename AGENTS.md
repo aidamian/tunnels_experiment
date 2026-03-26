@@ -2,7 +2,11 @@
 
 ## Purpose
 
-This repository demonstrates Cloudflare Tunnel access to services running inside a single Docker-in-Docker host, with a Python client on the real machine proving those tunnels work end to end.
+This repository demonstrates Cloudflare Tunnel across two Docker-in-Docker hosts plus a real-machine Python client:
+
+- `dind-host-server` publishes origin services
+- `dind-host-app` consumes the PostgreSQL tunnel through a local Python bridge and republishes a web UI
+- `clients/` proves the original host-side flow directly from the real machine
 
 ## Durable Memory
 
@@ -15,11 +19,15 @@ Read these files before making non-trivial changes:
 ## Steady-State Topology
 
 - `servers/docker-compose.yml`
-  - defines the single top-level `dind-host-container`
+  - defines top-level `dind-host-server`
 - `servers/docker/dind/servers/neo4j.sh`
-  - starts `neo4j-demo` and its HTTPS and Bolt tunnels
+  - starts `neo4j-demo` and its HTTPS and Bolt tunnels when enabled
 - `servers/docker/dind/servers/pgsql.sh`
-  - starts `postgres-demo` and its TCP tunnel
+  - starts `postgres-demo` and its TCP tunnel when enabled
+- `apps/docker-compose.yml`
+  - defines top-level `dind-host-app`
+- `apps/docker/dind/servers/pgadmin.sh`
+  - starts the app-host Python bridge, verifies PostgreSQL through it, starts `pgadmin-demo`, and publishes the app HTTPS UI
 - `clients/src/experiment_runner.py`
   - host-side proof runner
 - `clients/services.json`
@@ -50,23 +58,28 @@ Read these files before making non-trivial changes:
 
 - `servers/tunnels.json` contains live tunnel tokens. Never print, commit, or copy those tokens into tracked files.
 - `servers/src/utils/prepare_runtime.py` generates `servers/.runtime/dind.env`.
+- `apps/src/utils/prepare_runtime.py` generates `apps/.runtime/dind.env` from root-passed derived values.
 - `clients/services.json` is client-owned and must drive client bridge defaults.
-- No sharing of runtime files or raw-log folders between `servers/` and `clients/` is permitted.
+- No sharing of runtime files or raw-log folders between `servers/`, `apps/`, and `clients/` is permitted.
 - Root `_logs/` is for tracked markdown only, not active runtime output.
 - The tunnel-role mapping is fixed unless `IMPLEMENTATION.md` is intentionally updated:
   - tunnel 1: Neo4j HTTPS
   - tunnel 2: Neo4j Bolt/TCP
   - tunnel 3: PostgreSQL TCP
-  - tunnel 4: reserved and unused by the automated experiment
+  - tunnel 4: app HTTPS UI
 - Keep orchestration reproducible with `docker compose`, scripts, and tracked markdown.
 
 ## Definition Of Done
 
 - `python3 servers/src/utils/prepare_runtime.py` succeeds against `servers/tunnels.json`
-- `docker compose --project-directory servers -f servers/docker-compose.yml up --build -d` brings up the single top-level `dind-host-container`
-- the host-side experiment proves:
+- `./start_e2e.sh --duration-seconds 1` still proves:
   - Neo4j over public HTTPS
   - Neo4j over Bolt through the client-side local bridge
   - PostgreSQL over TCP through the client-side local bridge
-- the top-level Compose service publishes no ports to the real machine
+- `./start_apps.sh` proves:
+  - `dind-host-server` can launch only `pgsql`
+  - `dind-host-app` can bridge to the public PostgreSQL tunnel hostname
+  - `pgadmin-demo` can reach PostgreSQL through that bridge
+  - the public app UI responds over tunnel 4
+- both top-level Compose services publish no ports to the real machine
 - `IMPLEMENTATION.md` and the current timestamped root `_logs/*.md` summary reflect the verified state

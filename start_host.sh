@@ -8,6 +8,7 @@ client_raw_logs_dir="${client_root}/_logs/raw"
 server_raw_logs_dir="${server_root}/_logs/raw"
 venv_dir="${client_root}/.venv"
 persistent_service_volume_name="tunnels-experiment-persistent-service-data"
+server_services="neo4j,pgsql"
 stack_started="false"
 cleanup_started="false"
 run_ts="unknown"
@@ -17,7 +18,7 @@ mkdir -p "${client_raw_logs_dir}" "${server_raw_logs_dir}"
 
 usage() {
   cat <<'EOF'
-Usage: ./start_host.sh [bridge CLI options]
+Usage: ./start_host.sh [--server-services csv] [bridge CLI options]
 
 This command starts the DinD stack, waits for readiness, and then launches the
 manual Python bridge in the foreground for host tools such as DBeaver.
@@ -25,16 +26,33 @@ manual Python bridge in the foreground for host tools such as DBeaver.
 Examples:
   ./start_host.sh
   ./start_host.sh --service postgres
+  ./start_host.sh --server-services pgsql --service postgres --verify
   ./start_host.sh --postgres-port 55440 --neo4j-port 57695
 EOF
 }
 
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  usage
-  exit 0
-fi
-
-bridge_args=("$@")
+bridge_args=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --server-services)
+      if [[ $# -lt 2 ]]; then
+        echo "missing value for --server-services" >&2
+        usage >&2
+        exit 1
+      fi
+      server_services="$2"
+      shift 2
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      bridge_args+=("$1")
+      shift
+      ;;
+  esac
+done
 
 log() {
   local message="$1"
@@ -126,7 +144,7 @@ ensure_python_env() {
 
 cd "${repo_root}"
 
-run_step "preparing server runtime" "${server_raw_logs_dir}/prepare_runtime.log" python3 "${server_root}/src/utils/prepare_runtime.py"
+run_step "preparing server runtime" "${server_raw_logs_dir}/prepare_runtime.log" python3 "${server_root}/src/utils/prepare_runtime.py" --enabled-services "${server_services}"
 run_ts="$(extract_run_ts)"
 if [[ -z "${run_ts}" ]]; then
   echo "failed to extract RUN_TS from servers/.runtime/dind.env" >&2

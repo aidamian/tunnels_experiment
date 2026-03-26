@@ -6,6 +6,9 @@ import json
 import subprocess
 
 
+TOP_LEVEL_CONTAINERS = ["dind-host-server", "dind-host-app"]
+
+
 def docker_status() -> str:
   """Return a human-readable Docker status string for the top-level container.
 
@@ -20,9 +23,9 @@ def docker_status() -> str:
   True
   """
   # This helper keeps the polling scripts readable by centralizing the exact
-  # `docker ps` filter used to locate `dind-host-container`.
+  # `docker ps` filter used to locate `dind-host-server`.
   result = subprocess.run(
-    ["docker", "ps", "--filter", "name=^/dind-host-container$", "--format", "{{.Status}}"],
+    ["docker", "ps", "--filter", "name=^/dind-host-server$", "--format", "{{.Status}}"],
     check=False,
     capture_output=True,
     text=True,
@@ -45,20 +48,21 @@ def top_level_published_ports() -> list[str]:
   """
   # `docker inspect` is the authoritative source for whether the top-level
   # container published any real host ports.
-  result = subprocess.run(
-    ["docker", "inspect", "dind-host-container", "--format", "{{json .NetworkSettings.Ports}}"],
-    check=False,
-    capture_output=True,
-    text=True,
-  )
-  if result.returncode != 0 or not result.stdout.strip():
-    return []
-
-  payload = json.loads(result.stdout)
   published_ports: list[str] = []
-  for container_port, bindings in payload.items():
-    if not bindings:
+  for container_name in TOP_LEVEL_CONTAINERS:
+    result = subprocess.run(
+      ["docker", "inspect", container_name, "--format", "{{json .NetworkSettings.Ports}}"],
+      check=False,
+      capture_output=True,
+      text=True,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
       continue
-    for binding in bindings:
-      published_ports.append(f"{binding['HostIp']}:{binding['HostPort']}->{container_port}")
+
+    payload = json.loads(result.stdout)
+    for container_port, bindings in payload.items():
+      if not bindings:
+        continue
+      for binding in bindings:
+        published_ports.append(f"{container_name}:{binding['HostIp']}:{binding['HostPort']}->{container_port}")
   return published_ports

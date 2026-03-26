@@ -1,11 +1,11 @@
-name: tunnels-experiment
+name: tunnels-experiment-server
 
 services:
-  dind-host-container:
+  dind-host-server:
     build:
       context: .
       dockerfile: docker/dind/Dockerfile
-    container_name: dind-host-container
+    container_name: dind-host-server
     privileged: true
     env_file:
       - .runtime/dind.env
@@ -16,7 +16,7 @@ services:
       # Runtime state lives under /logs and /var/lib/docker. Service data
       # persists separately so database state can survive full stack teardown.
       - ./_logs:/logs
-      - dind-host-docker:/var/lib/docker
+      - dind-host-server-docker:/var/lib/docker
       - dind-persistent-service-data:/persistent-service-data
     healthcheck:
       test:
@@ -29,7 +29,7 @@ services:
     restart: unless-stopped
 
 volumes:
-  dind-host-docker:
+  dind-host-server-docker:
   dind-persistent-service-data:
     external: true
     name: tunnels-experiment-persistent-service-data

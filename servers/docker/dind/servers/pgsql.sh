@@ -6,7 +6,7 @@ set -Eeuo pipefail
 # 2. wait for process-level and SQL-level readiness;
 # 3. create the proof table used by the host-side experiment;
 # 4. start the Cloudflare TCP tunnel that points at PostgreSQL's loopback-only
-#    origin inside dind-host-container;
+#    origin inside dind-host-server;
 # 5. publish a generic ready marker for the orchestrator.
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -52,7 +52,7 @@ start_container() {
     log_with_scope "${scope}" "initializing new PostgreSQL data directory at ${data_dir}"
   fi
 
-  # This loopback bind lives inside dind-host-container only. The real machine
+  # This loopback bind lives inside dind-host-server only. The real machine
   # never receives a directly published PostgreSQL port from this child.
   docker run -d \
     --name "${container_name}" \

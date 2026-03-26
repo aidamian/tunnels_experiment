@@ -10,6 +10,7 @@ venv_dir="${client_root}/.venv"
 persistent_service_volume_name="tunnels-experiment-persistent-service-data"
 duration_seconds=""
 keep_up="false"
+server_services="neo4j,pgsql"
 stack_started="false"
 cleanup_started="false"
 run_ts="unknown"
@@ -19,10 +20,11 @@ mkdir -p "${client_raw_logs_dir}" "${server_raw_logs_dir}"
 
 usage() {
   cat <<'EOF'
-Usage: ./start_e2e.sh [--duration-seconds N] [--keep-up]
+Usage: ./start_e2e.sh [--duration-seconds N] [--server-services csv] [--keep-up]
 
 Options:
   --duration-seconds N  Override the total host-side experiment duration.
+  --server-services csv Comma-separated server services to launch inside dind-host-server.
   --keep-up             Leave the Compose stack running after the experiment finishes.
 EOF
 }
@@ -41,6 +43,15 @@ while [[ $# -gt 0 ]]; do
     --keep-up)
       keep_up="true"
       shift
+      ;;
+    --server-services)
+      if [[ $# -lt 2 ]]; then
+        echo "missing value for --server-services" >&2
+        usage >&2
+        exit 1
+      fi
+      server_services="$2"
+      shift 2
       ;;
     --help|-h)
       usage
@@ -127,7 +138,7 @@ ensure_python_env() {
 
 cd "${repo_root}"
 
-run_step "preparing server runtime" "${server_raw_logs_dir}/prepare_runtime.log" python3 "${server_root}/src/utils/prepare_runtime.py"
+run_step "preparing server runtime" "${server_raw_logs_dir}/prepare_runtime.log" python3 "${server_root}/src/utils/prepare_runtime.py" --enabled-services "${server_services}"
 run_ts="$(extract_run_ts)"
 if [[ -z "${run_ts}" ]]; then
   echo "failed to extract RUN_TS from servers/.runtime/dind.env" >&2
@@ -152,7 +163,7 @@ run_step "running the host-side experiment" "${client_raw_logs_dir}/${run_ts}_ex
 run_step "running the smoke test" "${client_raw_logs_dir}/${run_ts}_smoke_test.log" python3 "${client_root}/src/utils/smoke_test.py" --run-ts "${run_ts}"
 
 run_step "capturing compose status" "${server_raw_logs_dir}/${run_ts}_compose_ps.log" "${compose_cmd[@]}" ps
-run_step "capturing top-level container logs" "${server_raw_logs_dir}/${run_ts}_compose_logs.log" "${compose_cmd[@]}" logs --no-color dind-host-container
+run_step "capturing top-level container logs" "${server_raw_logs_dir}/${run_ts}_compose_logs.log" "${compose_cmd[@]}" logs --no-color dind-host-server
 run_step "appending run log" "${client_raw_logs_dir}/${run_ts}_append_runlog.log" python3 "${client_root}/src/utils/append_runlog.py" --run-ts "${run_ts}"
 run_step "writing iteration summary" "${client_raw_logs_dir}/${run_ts}_write_summary.log" python3 "${client_root}/src/utils/write_summary.py" --run-ts "${run_ts}"
 

@@ -1,0 +1,28 @@
+name: tunnels-experiment-app
+
+services:
+  dind-host-app:
+    build:
+      context: .
+      dockerfile: docker/dind/Dockerfile
+    container_name: dind-host-app
+    privileged: true
+    env_file:
+      - .runtime/dind.env
+    environment:
+      LOGS_DIR: /logs
+    volumes:
+      - ./_logs:/logs
+      - dind-host-app-docker:/var/lib/docker
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test -f /logs/raw/$${RUN_TS}_topology_ready.json && jq -e '.all_ready == true' /logs/raw/$${RUN_TS}_topology_ready.json >/dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    restart: unless-stopped
+
+volumes:
+  dind-host-app-docker:
