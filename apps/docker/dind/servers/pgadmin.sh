@@ -44,7 +44,7 @@ start_bridge() {
   local bridge_pid
 
   mkdir -p "${runtime_dir}"
-  python3 /opt/tunnel-app/src/bridge/run_bridge_daemon.py \
+  python3 /opt/tunnel-app/shared/src/tunnel_common/universal.py \
     --name "${bridge_name}" \
     --hostname "${REMOTE_POSTGRES_PUBLIC_HOST}" \
     --local-port "${APP_BRIDGE_LOCAL_PORT}" \

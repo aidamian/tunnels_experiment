@@ -13,6 +13,8 @@ This repository demonstrates Cloudflare Tunnel across three isolated worlds:
 |-- start_e2e.sh
 |-- start_host.sh
 |-- start_apps.sh
+|-- shared/
+|   `-- src/
 |-- clients/
 |   |-- services.json
 |   |-- requirements.txt
@@ -35,6 +37,7 @@ This repository demonstrates Cloudflare Tunnel across three isolated worlds:
 - `servers/` owns the origin DinD host, tunnel inventory, and server runtime/log output.
 - `apps/` owns the consumer DinD host, the internal Python bridge, and app runtime/log output.
 - `clients/` owns the real-machine proof client and `clients/services.json`.
+- `shared/` owns neutral reusable code that may be imported by both `clients/` and `apps/`.
 - Root `_logs/` stays documentation-only.
 
 ## Topology
@@ -73,12 +76,12 @@ The critical rule is unchanged: neither top-level DinD host publishes service po
 
 - Neo4j HTTPS is a normal public HTTPS application.
 - Neo4j Bolt and PostgreSQL are Tunnel-published TCP applications carried to consumers over WebSocket.
-- `clients/src/bridge/universal.py` converts those public TCP tunnel hostnames into localhost TCP sockets for the real-machine client.
-- `apps/src/bridge/universal.py` does the same inside `dind-host-app`, so `pgadmin-demo` can connect to `127.0.0.1:55432` and behave as if PostgreSQL were local to that DinD host.
+- `shared/src/tunnel_common/universal.py` converts those public TCP tunnel hostnames into localhost TCP sockets for both the real-machine client and `dind-host-app`, and can be run directly as a one-bridge-per-process daemon.
+- Inside `dind-host-app`, `pgadmin-demo` connects to `127.0.0.1:55432` and behaves as if PostgreSQL were local to that DinD host.
 
 ## Main Commands
 
-Full host-side proof:
+Full end-to-end proof, including the app consumer flow:
 
 ```bash
 ./start_e2e.sh --duration-seconds 1
@@ -90,16 +93,16 @@ Manual host bridge workflow:
 timeout -s INT 120 ./start_host.sh --verify
 ```
 
-Server plus app flow:
+Server plus app flow that stays up until Ctrl-C:
 
 ```bash
 ./start_apps.sh
 ```
 
-Keep the app flow up for manual inspection:
+One-shot app verification that exits on its own:
 
 ```bash
-./start_apps.sh --keep-up
+./start_apps.sh --exit-after-verify
 ```
 
 ## Verified State
@@ -112,3 +115,4 @@ The repository is currently verified to demonstrate:
 - `pgadmin-demo` using that bridge inside `dind-host-app`
 - a public HTTPS UI on tunnel 4 that responds with `PING` at `/misc/ping`
 - the original real-machine Neo4j/PostgreSQL proof path still passing
+- `start_e2e.sh` validating both the host-side client proof and the app consumer proof in one run

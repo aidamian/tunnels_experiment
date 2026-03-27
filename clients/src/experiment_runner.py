@@ -9,15 +9,23 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from bridge.universal import LOCALHOST, UniversalBridgeServer
+SRC_DIR = Path(__file__).resolve().parent
+SHARED_SRC_DIR = Path(__file__).resolve().parents[2] / "shared" / "src"
+if str(SRC_DIR) not in sys.path:
+  sys.path.insert(0, str(SRC_DIR))
+if str(SHARED_SRC_DIR) not in sys.path:
+  sys.path.insert(0, str(SHARED_SRC_DIR))
+
 from simulators.neo4j_bolt import run_neo4j_bolt_cycle
 from simulators.neo4j_https import run_neo4j_https_read
 from simulators.postgres import run_postgres_cycle
+from tunnel_common.universal import LOCALHOST, UniversalBridgeServer
 from utils.console import colorize, format_line
 from utils.demo_config import (
   DEFAULT_EXPERIMENT_CYCLE_INTERVAL_SECONDS,

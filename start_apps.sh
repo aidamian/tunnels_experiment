@@ -8,10 +8,12 @@ server_raw_logs_dir="${server_root}/_logs/raw"
 app_raw_logs_dir="${app_root}/_logs/raw"
 persistent_service_volume_name="tunnels-experiment-persistent-service-data"
 keep_up="false"
-stack_started="false"
+exit_after_verify="false"
 cleanup_started="false"
 run_ts="unknown"
 server_services="pgsql"
+server_stack_started="false"
+app_stack_started="false"
 server_compose_cmd=(docker compose --project-directory "${server_root}" -f "${server_root}/docker-compose.yml")
 app_compose_cmd=(docker compose --project-directory "${app_root}" -f "${app_root}/docker-compose.yml")
 
@@ -19,12 +21,15 @@ mkdir -p "${server_raw_logs_dir}" "${app_raw_logs_dir}"
 
 usage() {
   cat <<'EOF'
-Usage: ./start_apps.sh [--keep-up] [--server-services csv]
+Usage: ./start_apps.sh [--server-services csv] [--exit-after-verify] [--keep-up]
 
 This command starts:
 1. dind-host-server with only the requested origin services
 2. dind-host-app with an internal Python bridge and pgAdmin UI
 3. the public HTTPS tunnel that exposes the pgAdmin UI
+
+By default the script keeps both stacks running until Ctrl-C, then tears them
+down. Use --exit-after-verify for a one-shot verification run.
 EOF
 }
 
@@ -32,6 +37,10 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --keep-up)
       keep_up="true"
+      shift
+      ;;
+    --exit-after-verify)
+      exit_after_verify="true"
       shift
       ;;
     --server-services)
@@ -73,6 +82,21 @@ quoted_command() {
   printf '%q ' "$@"
 }
 
+csv_has_service() {
+  local csv="$1"
+  local expected="$2"
+  local item=""
+
+  IFS=',' read -r -a _service_items <<<"${csv}"
+  for item in "${_service_items[@]}"; do
+    item="${item//[[:space:]]/}"
+    if [[ "${item}" == "${expected}" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 run_step() {
   local label="$1"
   local logfile="$2"
@@ -100,6 +124,22 @@ extract_env_value() {
   awk -F= -v key="${key}" '$1 == key {print substr($0, index($0, "=") + 1)}' "${env_file}"
 }
 
+validate_required_server_services() {
+  if ! csv_has_service "${server_services}" "pgsql"; then
+    echo "start_apps.sh requires server service 'pgsql' because the app bridge targets PostgreSQL" >&2
+    exit 1
+  fi
+}
+
+hold_until_interrupt() {
+  log "app flow ${run_ts} is verified and running" green
+  log "public pgAdmin UI: https://${app_ui_public_host}" green
+  log "press Ctrl-C to stop both stacks" yellow
+  while true; do
+    sleep 3600
+  done
+}
+
 cleanup() {
   local exit_code=$?
   if [[ "${cleanup_started}" == "true" ]]; then
@@ -107,10 +147,12 @@ cleanup() {
   fi
   cleanup_started="true"
 
-  if [[ "${stack_started}" == "true" && "${keep_up}" != "true" ]]; then
+  if [[ "${app_stack_started}" == "true" && "${keep_up}" != "true" ]]; then
     log "stopping the app Compose stack" yellow
     "${app_compose_cmd[@]}" down --remove-orphans --volumes \
       >"${app_raw_logs_dir}/${run_ts}_compose_down.log" 2>&1 || true
+  fi
+  if [[ "${server_stack_started}" == "true" && "${keep_up}" != "true" ]]; then
     log "stopping the server Compose stack" yellow
     "${server_compose_cmd[@]}" down --remove-orphans --volumes \
       >"${server_raw_logs_dir}/${run_ts}_compose_down.log" 2>&1 || true
@@ -121,6 +163,8 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 cd "${repo_root}"
+
+validate_required_server_services
 
 run_step "preparing server runtime" "${server_raw_logs_dir}/prepare_runtime.log" python3 "${server_root}/src/utils/prepare_runtime.py" --enabled-services "${server_services}"
 run_ts="$(extract_env_value "${server_root}/.runtime/dind.env" "RUN_TS")"
@@ -153,11 +197,12 @@ ensure_persistent_service_volume
 run_step "validating server compose configuration" "${server_raw_logs_dir}/${run_ts}_compose_config.log" "${server_compose_cmd[@]}" config -q
 run_step "validating app compose configuration" "${app_raw_logs_dir}/${run_ts}_compose_config.log" "${app_compose_cmd[@]}" config -q
 
-run_step "building and starting the server stack" "${server_raw_logs_dir}/${run_ts}_compose_up.log" "${server_compose_cmd[@]}" up --build -d
-stack_started="true"
+run_step "building and starting the server stack" "${server_raw_logs_dir}/${run_ts}_compose_up.log" "${server_compose_cmd[@]}" up --build --quiet-build --quiet-pull -d
+server_stack_started="true"
 run_step "waiting for the server topology" "${server_raw_logs_dir}/${run_ts}_wait_for_stack.log" python3 "${server_root}/src/utils/wait_for_stack.py" --run-ts "${run_ts}"
 
-run_step "building and starting the app stack" "${app_raw_logs_dir}/${run_ts}_compose_up.log" "${app_compose_cmd[@]}" up --build -d
+run_step "building and starting the app stack" "${app_raw_logs_dir}/${run_ts}_compose_up.log" "${app_compose_cmd[@]}" up --build --quiet-build --quiet-pull -d
+app_stack_started="true"
 run_step "waiting for the app topology" "${app_raw_logs_dir}/${run_ts}_wait_for_stack.log" python3 "${app_root}/src/utils/wait_for_stack.py" --run-ts "${run_ts}"
 run_step "verifying the public app UI" "${app_raw_logs_dir}/${run_ts}_verify_public_ui.log" python3 "${app_root}/src/utils/verify_public_ui.py" --run-ts "${run_ts}" --timeout-seconds 60
 
@@ -166,4 +211,9 @@ run_step "capturing app compose status" "${app_raw_logs_dir}/${run_ts}_compose_p
 run_step "capturing server container logs" "${server_raw_logs_dir}/${run_ts}_compose_logs.log" "${server_compose_cmd[@]}" logs --no-color dind-host-server
 run_step "capturing app container logs" "${app_raw_logs_dir}/${run_ts}_compose_logs.log" "${app_compose_cmd[@]}" logs --no-color dind-host-app
 
-log "app flow ${run_ts} completed successfully" green
+if [[ "${exit_after_verify}" == "true" ]]; then
+  log "app flow ${run_ts} completed successfully" green
+  exit 0
+fi
+
+hold_until_interrupt

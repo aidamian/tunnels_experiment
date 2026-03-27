@@ -17,8 +17,11 @@ from typing import Any
 
 
 SRC_DIR = Path(__file__).resolve().parents[1]
+SHARED_SRC_DIR = Path(__file__).resolve().parents[3] / "shared" / "src"
 if str(SRC_DIR) not in sys.path:
   sys.path.insert(0, str(SRC_DIR))
+if str(SHARED_SRC_DIR) not in sys.path:
+  sys.path.insert(0, str(SHARED_SRC_DIR))
 
 from bridge.local_bridges import (
   LOCALHOST,
@@ -27,9 +30,9 @@ from bridge.local_bridges import (
   client_root,
   default_specs,
 )
-from bridge.universal import UniversalBridgeServer
 from simulators.neo4j_bolt import verify_neo4j_bolt_bridge
 from simulators.postgres import verify_postgres_bridge
+from tunnel_common.universal import UniversalBridgeServer
 from utils.console import colorize, format_line
 from utils.demo_config import (
   NEO4J_PASSWORD,

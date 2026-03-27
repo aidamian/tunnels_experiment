@@ -28,6 +28,8 @@ Read these files before making non-trivial changes:
   - defines top-level `dind-host-app`
 - `apps/docker/dind/servers/pgadmin.sh`
   - starts the app-host Python bridge, verifies PostgreSQL through it, starts `pgadmin-demo`, and publishes the app HTTPS UI
+- `shared/src/tunnel_common/universal.py`
+  - single shared TCP-to-WebSocket bridge implementation and direct single-bridge CLI used by both `clients/` and `apps/`
 - `clients/src/experiment_runner.py`
   - host-side proof runner
 - `clients/services.json`
@@ -76,10 +78,11 @@ Read these files before making non-trivial changes:
   - Neo4j over public HTTPS
   - Neo4j over Bolt through the client-side local bridge
   - PostgreSQL over TCP through the client-side local bridge
+  - the app consumer flow over tunnel 4
 - `./start_apps.sh` proves:
   - `dind-host-server` can launch only `pgsql`
   - `dind-host-app` can bridge to the public PostgreSQL tunnel hostname
   - `pgadmin-demo` can reach PostgreSQL through that bridge
-  - the public app UI responds over tunnel 4
+  - the public app UI responds over tunnel 4 while the script stays up until Ctrl-C
 - both top-level Compose services publish no ports to the real machine
 - `IMPLEMENTATION.md` and the current timestamped root `_logs/*.md` summary reflect the verified state

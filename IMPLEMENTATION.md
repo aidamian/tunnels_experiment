@@ -6,8 +6,8 @@ This file is the source of truth for the current architecture, workflow, validat
 ## Status
 
 - Phase: verified two-host DinD topology with an app-side bridge-backed pgAdmin flow
-- Latest verified host-side proof run: `260326_225326`
-- Latest verified app-side bridge/UI run: `260326_230816`
+- Latest verified combined host-and-app proof run: `260327_091041`
+- Latest verified interactive app-side hold run: `260327_080359`
 
 ## Objective
 
@@ -29,10 +29,13 @@ Build a reproducible demo showing that:
   - owns the origin DinD host, server tunnel inventory, server runtime env, and server raw logs
 
 - `apps/`
-  - owns the app DinD host, app bridge code, app runtime env, and app raw logs
+  - owns the app DinD host, app runtime env, and app raw logs
 
 - `clients/`
   - owns the real-machine Python proof client, `clients/services.json`, client virtualenv inputs, and client raw logs
+
+- `shared/`
+  - owns neutral reusable code that may be imported by multiple worlds without crossing ownership boundaries
 
 - root
   - owns orchestration scripts, tracked docs, and tracked markdown summaries only
@@ -42,9 +45,11 @@ Build a reproducible demo showing that:
 - client code does not import from `servers/` or `apps/`
 - app code does not import from `servers/` or `clients/`
 - server code does not import from `clients/` or `apps/`
+- client and app code may import from `shared/` only when the shared module is world-neutral and does not read world-owned runtime files or secrets
 - client code does not read `servers/.runtime/`, `servers/_logs/raw/`, `apps/.runtime/`, or `apps/_logs/raw/`
 - app code does not read `servers/tunnels.json`, `servers/_logs/raw/`, or `clients/services.json`
 - server code does not read `clients/services.json`, `clients/_logs/raw/`, `apps/.runtime/`, or `apps/_logs/raw/`
+- shared code must not read `servers/tunnels.json`, any world-owned runtime directory, or any world-owned raw-log directory
 - root scripts may coordinate worlds by passing CLI arguments or environment values, but they must not create a shared runtime directory at repo root
 
 ### Topology
@@ -77,8 +82,7 @@ Build a reproducible demo showing that:
 - `cloudflared tunnel run --url tcp://127.0.0.1:15432` publishes PostgreSQL in Cloudflare TCP mode
 - `cloudflared tunnel run --url http://127.0.0.1:18080` publishes the app UI in normal HTTP proxy mode
 - published Tunnel TCP applications still require a TCP-to-WebSocket bridge on the consumer side
-- the real-machine client bridge lives in `clients/src/bridge/universal.py`
-- the app-host bridge lives in `apps/src/bridge/universal.py`
+- the single shared bridge implementation and generic single-bridge CLI live in `shared/src/tunnel_common/universal.py`
 - `pgadmin-demo` uses `--network host` inside `dind-host-app`, so `127.0.0.1:55432` refers to the bridge in the app DinD host, not the real machine
 
 ### Runtime Generation
@@ -150,14 +154,19 @@ It defines:
 ### Host-side Proof Path
 
 1. `python3 servers/src/utils/prepare_runtime.py --enabled-services neo4j,pgsql`
-2. `docker volume create tunnels-experiment-persistent-service-data || true`
-3. `docker compose --project-directory servers -f servers/docker-compose.yml up --build -d`
-4. `python3 servers/src/utils/wait_for_stack.py --run-ts <RUN_TS>`
-5. `clients/.venv/bin/python clients/src/experiment_runner.py --run-ts <RUN_TS>`
-6. `python3 clients/src/utils/smoke_test.py --run-ts <RUN_TS>`
-7. `python3 clients/src/utils/append_runlog.py --run-ts <RUN_TS>`
-8. `python3 clients/src/utils/write_summary.py --run-ts <RUN_TS>`
-9. `docker compose --project-directory servers -f servers/docker-compose.yml down --remove-orphans --volumes`
+2. derive `RUN_TS`, PostgreSQL public host, and app UI tunnel values from `servers/.runtime/dind.env`
+3. `python3 apps/src/utils/prepare_runtime.py ...`
+4. `docker volume create tunnels-experiment-persistent-service-data || true`
+5. `docker compose --project-directory servers -f servers/docker-compose.yml up --build -d`
+6. `python3 servers/src/utils/wait_for_stack.py --run-ts <RUN_TS>`
+7. `clients/.venv/bin/python clients/src/experiment_runner.py --run-ts <RUN_TS>`
+8. `python3 clients/src/utils/smoke_test.py --run-ts <RUN_TS>`
+9. `docker compose --project-directory apps -f apps/docker-compose.yml up --build -d`
+10. `python3 apps/src/utils/wait_for_stack.py --run-ts <RUN_TS>`
+11. `python3 apps/src/utils/verify_public_ui.py --run-ts <RUN_TS> --timeout-seconds 60`
+12. `python3 clients/src/utils/append_runlog.py --run-ts <RUN_TS>`
+13. `python3 clients/src/utils/write_summary.py --run-ts <RUN_TS>`
+14. tear down both Compose projects unless `--keep-up` was requested
 
 Default host-side automation:
 
@@ -177,7 +186,7 @@ Manual host bridge path:
 6. `docker compose --project-directory apps -f apps/docker-compose.yml up --build -d`
 7. `python3 apps/src/utils/wait_for_stack.py --run-ts <RUN_TS>`
 8. `python3 apps/src/utils/verify_public_ui.py --run-ts <RUN_TS> --timeout-seconds 10`
-9. tear down both Compose projects unless `--keep-up` was requested
+9. keep both Compose projects running until Ctrl-C, then tear them down unless `--keep-up` was requested
 
 Default app-side automation:
 
@@ -187,7 +196,7 @@ Default app-side automation:
 
 - static checks:
   - `bash -n start_e2e.sh start_host.sh start_apps.sh`
-  - `python3 -m compileall clients/src servers/src apps/src`
+  - `python3 -m compileall shared/src clients/src servers/src apps/src`
   - `docker compose --project-directory servers -f servers/docker-compose.yml config -q`
   - `docker compose --project-directory apps -f apps/docker-compose.yml config -q` after app runtime generation
 
@@ -195,7 +204,7 @@ Default app-side automation:
   - `./start_e2e.sh --duration-seconds 1`
 
 - app-side functional proof:
-  - `./start_apps.sh --keep-up`
+  - `timeout -s INT 120 ./start_apps.sh`
   - `python3 apps/src/utils/verify_public_ui.py --run-ts <RUN_TS> --timeout-seconds 10`
   - `docker inspect dind-host-server --format '{{json .NetworkSettings.Ports}}'`
   - `docker inspect dind-host-app --format '{{json .NetworkSettings.Ports}}'`
@@ -208,11 +217,12 @@ Default app-side automation:
   - Neo4j over public HTTPS
   - Neo4j Bolt through the client-side local bridge
   - PostgreSQL through the client-side local bridge
+  - the pgAdmin app flow over the app-host bridge and tunnel 4
 - `./start_apps.sh` proves:
   - `dind-host-server` can start only `pgsql`
   - `dind-host-app` can connect to the public PostgreSQL tunnel through its local Python bridge
   - `pgadmin-demo` can reach PostgreSQL through that bridge
-  - the public app UI responds over tunnel 4
+  - the public app UI responds over tunnel 4 while the script remains active until Ctrl-C
 - `docker inspect dind-host-server --format '{{json .NetworkSettings.Ports}}'` shows only null bindings
 - `docker inspect dind-host-app --format '{{json .NetworkSettings.Ports}}'` shows only null bindings
 - server runtime artifacts stay under `servers/`
@@ -235,6 +245,7 @@ Default app-side automation:
 - no client file reads server or app runtime/log folders
 - no app file reads `servers/tunnels.json` or client-owned runtime files
 - no server file reads client or app runtime files
+- shared bridge code stays free of world-owned runtime reads and secret reads
 - the server DinD image build context stays under `servers/`
 - the app DinD image build context stays under `apps/`
 
@@ -260,6 +271,6 @@ Default app-side automation:
 ### Operational Quality
 
 - `bash -n start_e2e.sh start_host.sh start_apps.sh` passes
-- `python3 -m compileall clients/src servers/src apps/src` passes
-- `./start_e2e.sh --duration-seconds 1` passes
-- `python3 apps/src/utils/verify_public_ui.py --run-ts 260326_230816 --timeout-seconds 10` passes
+- `python3 -m compileall shared/src clients/src servers/src apps/src` passes
+- `./start_e2e.sh --duration-seconds 1` passes and records the app proof in `_logs/260326_235130_summary.md`
+- `timeout -s INT 240 ./start_apps.sh` reaches the verified hold state and tears down cleanly on Ctrl-C for run `260326_234729`

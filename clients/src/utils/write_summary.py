@@ -30,6 +30,24 @@ def parse_args() -> argparse.Namespace:
   return parser.parse_args()
 
 
+def load_optional_app_state(repo_root: Path, run_ts: str) -> dict[str, object] | None:
+  topology_path = repo_root / "apps" / "_logs" / "raw" / f"{run_ts}_topology_ready.json"
+  verification_path = repo_root / "apps" / "_logs" / "raw" / f"{run_ts}_verify_public_ui.log"
+
+  if not topology_path.exists() or not verification_path.exists():
+    return None
+
+  topology_payload = json.loads(topology_path.read_text(encoding="utf-8"))
+  verification_payload = json.loads(verification_path.read_text(encoding="utf-8"))
+  return {
+    "public_host": topology_payload["topology"]["public_hosts"]["app_ui_https"],
+    "postgres_bridge": topology_payload["topology"]["local_origins_inside_dind_host"]["postgres_bridge"],
+    "ok": verification_payload.get("ok", False),
+    "status": verification_payload.get("status"),
+    "body_sample": verification_payload.get("body_sample", ""),
+  }
+
+
 def main() -> int:
   """Write the markdown summary for the selected run.
 
@@ -55,19 +73,34 @@ def main() -> int:
 
   # The summary file is the short tracked markdown artifact for a single run.
   payload = json.loads(report_path.read_text(encoding="utf-8"))
-  summary = "\n".join(
+  app_state = load_optional_app_state(repo_root, run_ts)
+  lines = [
+    f"# {run_ts} summary",
+    "",
+    "## Result",
+    f"- Overall status: {'PASS' if payload['all_ok'] else 'FAIL'}",
+    f"- Cycles completed: {payload['cycles_completed']}",
+    f"- Top-level published ports: {payload['topology']['top_level_published_ports'] or 'none'}",
+    "",
+    "## Verified Paths",
+    f"- Neo4j HTTPS: https://{payload['topology']['public_hosts']['neo4j_https']}",
+    f"- Neo4j Bolt: {payload['topology']['public_hosts']['neo4j_bolt']}",
+    f"- PostgreSQL TCP: {payload['topology']['public_hosts']['postgres']}",
+  ]
+  if app_state is not None:
+    lines.extend(
+      [
+        f"- App UI HTTPS: https://{app_state['public_host']}",
+        "",
+        "## App Consumer Proof",
+        f"- App-host PostgreSQL bridge: {app_state['postgres_bridge']}",
+        f"- App UI probe: {'PASS' if app_state['ok'] else 'FAIL'} ({app_state['status']}, {app_state['body_sample']})",
+        f"- Raw app topology: `apps/_logs/raw/{run_ts}_topology_ready.json`",
+        f"- Raw app UI check: `apps/_logs/raw/{run_ts}_verify_public_ui.log`",
+      ],
+    )
+  lines.extend(
     [
-      f"# {run_ts} summary",
-      "",
-      "## Result",
-      f"- Overall status: {'PASS' if payload['all_ok'] else 'FAIL'}",
-      f"- Cycles completed: {payload['cycles_completed']}",
-      f"- Top-level published ports: {payload['topology']['top_level_published_ports'] or 'none'}",
-      "",
-      "## Verified Paths",
-      f"- Neo4j HTTPS: https://{payload['topology']['public_hosts']['neo4j_https']}",
-      f"- Neo4j Bolt: {payload['topology']['public_hosts']['neo4j_bolt']}",
-      f"- PostgreSQL TCP: {payload['topology']['public_hosts']['postgres']}",
       "",
       "## Proof",
       f"- PostgreSQL rows written for this run: {len(payload['results']['postgres_tunnel']['rows_for_run'])}",
@@ -76,6 +109,7 @@ def main() -> int:
       "",
     ],
   )
+  summary = "\n".join(lines)
 
   # Overwrite the per-run summary so rerunning the same run id keeps a single
   # authoritative markdown snapshot for that run identifier.

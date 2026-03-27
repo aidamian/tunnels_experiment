@@ -155,7 +155,7 @@ ensure_python_env
 ensure_persistent_service_volume
 
 run_step "validating compose configuration" "${server_raw_logs_dir}/${run_ts}_compose_config.log" "${compose_cmd[@]}" config -q
-run_quiet_step "building and starting the stack" "${server_raw_logs_dir}/${run_ts}_compose_up.log" "${compose_cmd[@]}" up --build -d
+run_quiet_step "building and starting the stack" "${server_raw_logs_dir}/${run_ts}_compose_up.log" "${compose_cmd[@]}" up --build --quiet-build --quiet-pull -d
 stack_started="true"
 
 run_step "waiting for the DinD-host topology" "${server_raw_logs_dir}/${run_ts}_wait_for_stack.log" python3 "${server_root}/src/utils/wait_for_stack.py" --run-ts "${run_ts}"

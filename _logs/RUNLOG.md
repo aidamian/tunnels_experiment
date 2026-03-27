@@ -205,3 +205,45 @@ End-to-end experiment runs are appended below.
 - PostgreSQL rows for run: 3
 - Neo4j events for run: 3
 - Raw report: `clients/_logs/raw/260326_225326_experiment_report.json`
+## 2026-03-26T23:54:50.573231 | run 260326_235130
+- Result: PASS
+- Cycles completed: 3
+- Top-level published ports: none
+- Neo4j HTTPS host: c74d8a4e03e6.ratio1.link
+- Neo4j Bolt host: 99c7e7089d1b.ratio1.link
+- PostgreSQL host: 60bf15690490.ratio1.link
+- Local PostgreSQL forward: 127.0.0.1:55432
+- Local Neo4j Bolt forward: 127.0.0.1:57687
+- PostgreSQL rows for run: 3
+- Neo4j events for run: 3
+- App UI host: 98c70737f05f.ratio1.link
+- App UI check: PASS (200, PING)
+- Raw report: `clients/_logs/raw/260326_235130_experiment_report.json`
+## 2026-03-27T08:10:41.630040 | run 260327_080712
+- Result: PASS
+- Cycles completed: 3
+- Top-level published ports: none
+- Neo4j HTTPS host: c74d8a4e03e6.ratio1.link
+- Neo4j Bolt host: 99c7e7089d1b.ratio1.link
+- PostgreSQL host: 60bf15690490.ratio1.link
+- Local PostgreSQL forward: 127.0.0.1:55432
+- Local Neo4j Bolt forward: 127.0.0.1:57687
+- PostgreSQL rows for run: 3
+- Neo4j events for run: 3
+- App UI host: 98c70737f05f.ratio1.link
+- App UI check: PASS (200, PING)
+- Raw report: `clients/_logs/raw/260327_080712_experiment_report.json`
+## 2026-03-27T09:14:09.298442 | run 260327_091041
+- Result: PASS
+- Cycles completed: 3
+- Top-level published ports: none
+- Neo4j HTTPS host: c74d8a4e03e6.ratio1.link
+- Neo4j Bolt host: 99c7e7089d1b.ratio1.link
+- PostgreSQL host: 60bf15690490.ratio1.link
+- Local PostgreSQL forward: 127.0.0.1:55432
+- Local Neo4j Bolt forward: 127.0.0.1:57687
+- PostgreSQL rows for run: 3
+- Neo4j events for run: 3
+- App UI host: 98c70737f05f.ratio1.link
+- App UI check: PASS (200, PING)
+- Raw report: `clients/_logs/raw/260327_091041_experiment_report.json`

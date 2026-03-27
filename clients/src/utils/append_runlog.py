@@ -33,6 +33,23 @@ def parse_args() -> argparse.Namespace:
   return parser.parse_args()
 
 
+def load_optional_app_state(repo_root: Path, run_ts: str) -> dict[str, object] | None:
+  topology_path = repo_root / "apps" / "_logs" / "raw" / f"{run_ts}_topology_ready.json"
+  verification_path = repo_root / "apps" / "_logs" / "raw" / f"{run_ts}_verify_public_ui.log"
+
+  if not topology_path.exists() or not verification_path.exists():
+    return None
+
+  topology_payload = json.loads(topology_path.read_text(encoding="utf-8"))
+  verification_payload = json.loads(verification_path.read_text(encoding="utf-8"))
+  return {
+    "public_host": topology_payload["topology"]["public_hosts"]["app_ui_https"],
+    "ok": verification_payload.get("ok", False),
+    "status": verification_payload.get("status"),
+    "body_sample": verification_payload.get("body_sample", ""),
+  }
+
+
 def main() -> int:
   """Append the selected run to the tracked markdown log.
 
@@ -61,6 +78,7 @@ def main() -> int:
   # Append a compact markdown summary so the repository keeps a readable,
   # chronological history of verified end-to-end runs.
   payload = json.loads(report_path.read_text(encoding="utf-8"))
+  app_state = load_optional_app_state(repo_root, run_ts)
   lines = [
     f"## {datetime.now().isoformat()} | run {run_ts}",
     f"- Result: {'PASS' if payload['all_ok'] else 'FAIL'}",
@@ -73,9 +91,20 @@ def main() -> int:
     f"- Local Neo4j Bolt forward: {payload['local_client_forwards']['neo4j_bolt']}",
     f"- PostgreSQL rows for run: {len(payload['results']['postgres_tunnel']['rows_for_run'])}",
     f"- Neo4j events for run: {len(payload['results']['neo4j_bolt_tunnel']['events_for_run'])}",
-    f"- Raw report: `clients/_logs/raw/{run_ts}_experiment_report.json`",
-    "",
   ]
+  if app_state is not None:
+    lines.extend(
+      [
+        f"- App UI host: {app_state['public_host']}",
+        f"- App UI check: {'PASS' if app_state['ok'] else 'FAIL'} ({app_state['status']}, {app_state['body_sample']})",
+      ],
+    )
+  lines.extend(
+    [
+      f"- Raw report: `clients/_logs/raw/{run_ts}_experiment_report.json`",
+      "",
+    ],
+  )
 
   with runlog_path.open("a", encoding="utf-8") as handle:
     handle.write("\n".join(lines))

@@ -13,6 +13,7 @@ COPY docker/dind/lib/common.sh /opt/tunnel-app/lib/common.sh
 COPY docker/dind/servers/ /opt/tunnel-app/servers/
 COPY docker/dind/assets/ /opt/tunnel-app/assets/
 COPY src/ /opt/tunnel-app/src/
+COPY --from=shared_src . /opt/tunnel-app/shared/src/
 
 RUN chmod +x \
     /usr/local/bin/tunnel-app-entrypoint.sh \

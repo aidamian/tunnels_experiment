@@ -4,7 +4,7 @@ COMPOSE := docker compose --project-directory servers -f servers/docker-compose.
 APP_COMPOSE := docker compose --project-directory apps -f apps/docker-compose.yml
 SERVER_SERVICES ?= neo4j,pgsql
 
-.PHONY: prepare-runtime ensure-persistent-data config up down start continuous smoke reset-data app-demo app-demo-keep app-down
+.PHONY: prepare-runtime ensure-persistent-data config up down start continuous smoke reset-data app-demo app-demo-keep app-demo-verify app-down
 
 prepare-runtime:
 	python3 servers/src/utils/prepare_runtime.py --enabled-services $(SERVER_SERVICES)
@@ -16,7 +16,7 @@ config: prepare-runtime
 	$(COMPOSE) config -q
 
 up: prepare-runtime ensure-persistent-data
-	$(COMPOSE) up --build -d
+	$(COMPOSE) up --build --quiet-build --quiet-pull -d
 
 down:
 	$(COMPOSE) down --remove-orphans --volumes
@@ -32,6 +32,9 @@ app-demo:
 
 app-demo-keep:
 	./start_apps.sh --keep-up
+
+app-demo-verify:
+	./start_apps.sh --exit-after-verify
 
 app-down:
 	$(APP_COMPOSE) down --remove-orphans --volumes

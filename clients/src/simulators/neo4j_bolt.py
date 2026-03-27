@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from bridge.universal import LOCALHOST
 from utils.demo_config import NEO4J_PASSWORD, NEO4J_USER
 from utils.dependencies import get_graph_database_class
+from utils.services import LOCALHOST
 
 
 def run_neo4j_bolt_cycle(run_id: str, cycle: int, proof: str, local_port: int) -> dict[str, Any]:
