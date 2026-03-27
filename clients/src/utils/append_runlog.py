@@ -13,6 +13,8 @@ SRC_DIR = Path(__file__).resolve().parents[1]
 if str(SRC_DIR) not in sys.path:
   sys.path.insert(0, str(SRC_DIR))
 
+from utils.sdk_logging import build_console_logger, log_message
+
 
 def parse_args() -> argparse.Namespace:
   """Parse CLI arguments for the run-log writer.
@@ -67,6 +69,7 @@ def main() -> int:
   ``python3 clients/src/utils/append_runlog.py --run-ts 260320_221626``
   """
   args = parse_args()
+  log = build_console_logger("append-runlog")
   client_root = Path(__file__).resolve().parents[2]
   repo_root = Path(__file__).resolve().parents[3]
   run_ts = args.run_ts
@@ -109,7 +112,7 @@ def main() -> int:
   with runlog_path.open("a", encoding="utf-8") as handle:
     handle.write("\n".join(lines))
 
-  print(f"appended {runlog_path}")
+  log_message(log, f"appended {runlog_path}", color="green")
   return 0
 
 

@@ -25,6 +25,8 @@ def main() -> int:
   deadline = time.time() + args.timeout_seconds
   last_error = {"public_host": public_host}
 
+  # This script intentionally keeps stdout as plain JSON because downstream
+  # tooling parses the entire output file with ``json.loads``.
   while time.time() < deadline:
     for suffix in ("/misc/ping", "/login", "/"):
       url = f"https://{public_host}{suffix}"

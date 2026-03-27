@@ -16,23 +16,21 @@ from pathlib import Path
 from typing import Any
 
 SRC_DIR = Path(__file__).resolve().parent
-SHARED_SRC_DIR = Path(__file__).resolve().parents[2] / "shared" / "src"
 if str(SRC_DIR) not in sys.path:
   sys.path.insert(0, str(SRC_DIR))
-if str(SHARED_SRC_DIR) not in sys.path:
-  sys.path.insert(0, str(SHARED_SRC_DIR))
+
+from ratio1.bridge import UniversalBridgeServer
 
 from simulators.neo4j_bolt import run_neo4j_bolt_cycle
 from simulators.neo4j_https import run_neo4j_https_read
 from simulators.postgres import run_postgres_cycle
-from tunnel_common.universal import LOCALHOST, UniversalBridgeServer
-from utils.console import colorize, format_line
 from utils.demo_config import (
   DEFAULT_EXPERIMENT_CYCLE_INTERVAL_SECONDS,
   DEFAULT_EXPERIMENT_DURATION_SECONDS,
 )
 from utils.docker_runtime import top_level_published_ports
 from utils.files import write_json_file
+from utils.sdk_logging import build_console_logger, build_persistent_logger, log_message
 from utils.services import load_services, public_host_map, require_service
 
 
@@ -116,6 +114,17 @@ def main() -> int:
   cycle_interval_seconds = args.cycle_interval_seconds or DEFAULT_EXPERIMENT_CYCLE_INTERVAL_SECONDS
   raw_logs_dir = client_root / "_logs" / "raw"
   report_path = raw_logs_dir / f"{run_id}_experiment_report.json"
+  experiment_log = build_console_logger("experiment")
+  postgres_bridge_log, postgres_bridge_log_path = build_persistent_logger(
+    "postgres_client_bridge",
+    base_folder=raw_logs_dir,
+    app_folder=run_id,
+  )
+  neo4j_bridge_log, neo4j_bridge_log_path = build_persistent_logger(
+    "neo4j_bolt_client_bridge",
+    base_folder=raw_logs_dir,
+    app_folder=run_id,
+  )
 
   topology = {
     "top_level_container": "dind-host-server",
@@ -142,22 +151,30 @@ def main() -> int:
       name="postgres_client_bridge",
       hostname=postgres_service.public_host,
       local_port=postgres_service.bridge.local_port,
-      run_ts=run_id,
-      raw_logs_dir=raw_logs_dir,
-      log_color="green",
+      log=postgres_bridge_log,
     ) as postgres_bridge, UniversalBridgeServer(
       name="neo4j_bolt_client_bridge",
       hostname=neo4j_bolt_service.public_host,
       local_port=neo4j_bolt_service.bridge.local_port,
-      run_ts=run_id,
-      raw_logs_dir=raw_logs_dir,
-      log_color="blue",
+      log=neo4j_bridge_log,
     ) as neo4j_bridge:
-      print(colorize(format_line("experiment", f"run_id={run_id}"), "cyan"), flush=True)
-      print(colorize(format_line("experiment", f"postgres local bridge: {postgres_service.bridge.local_host}:{postgres_service.bridge.local_port}"), "green"), flush=True)
-      print(colorize(format_line("experiment", f"neo4j bolt local bridge: {neo4j_bolt_service.bridge.local_host}:{neo4j_bolt_service.bridge.local_port}"), "blue"), flush=True)
-      print(colorize(format_line("experiment", f"neo4j https public endpoint: {neo4j_https_service.display_url}"), "cyan"), flush=True)
-      print(colorize(format_line("experiment", "bridge model: local TCP client -> host-side bridge -> wss://public-hostname -> private TCP origin"), "yellow"), flush=True)
+      log_message(experiment_log, f"run_id={run_id}", color="cyan")
+      log_message(
+        experiment_log,
+        f"postgres local bridge: {postgres_service.bridge.local_host}:{postgres_service.bridge.local_port}",
+        color="green",
+      )
+      log_message(
+        experiment_log,
+        f"neo4j bolt local bridge: {neo4j_bolt_service.bridge.local_host}:{neo4j_bolt_service.bridge.local_port}",
+        color="blue",
+      )
+      log_message(experiment_log, f"neo4j https public endpoint: {neo4j_https_service.display_url}", color="cyan")
+      log_message(
+        experiment_log,
+        "bridge model: local TCP client -> host-side bridge -> wss://public-hostname -> private TCP origin",
+        color="yellow",
+      )
 
       start_time = time.monotonic()
       cycle = 0
@@ -172,7 +189,7 @@ def main() -> int:
         # The proof string is written into both databases so the final report
         # can show that each cycle really traversed the expected path.
         proof = f"{run_id}-cycle-{cycle}-{datetime.now().strftime('%Y-%m-%dT%H:%M:%S%z')}"
-        print(colorize(format_line("experiment", f"cycle {cycle}: writing proof {proof}"), "cyan"), flush=True)
+        log_message(experiment_log, f"cycle {cycle}: writing proof {proof}", color="cyan")
 
         postgres_result = run_postgres_cycle(run_id, cycle, proof, postgres_service.bridge.local_port)
         neo4j_bolt_result = run_neo4j_bolt_cycle(run_id, cycle, proof, neo4j_bolt_service.bridge.local_port)
@@ -220,8 +237,8 @@ def main() -> int:
       "neo4j_bolt": f"{neo4j_bolt_service.bridge.local_host}:{neo4j_bolt_service.bridge.local_port}",
     },
     "log_files": {
-      "postgres_bridge": str(raw_logs_dir / f"{run_id}_postgres_client_bridge.log"),
-      "neo4j_bolt_bridge": str(raw_logs_dir / f"{run_id}_neo4j_bolt_client_bridge.log"),
+      "postgres_bridge": str(postgres_bridge_log_path),
+      "neo4j_bolt_bridge": str(neo4j_bridge_log_path),
     },
     "cycle_results": cycle_results,
     "results": results,

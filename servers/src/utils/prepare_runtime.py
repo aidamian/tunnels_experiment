@@ -21,6 +21,7 @@ from utils.demo_config import (
   POSTGRES_PASSWORD,
   POSTGRES_USER,
 )
+from utils.sdk_logging import build_console_logger, log_message
 
 
 # The tunnel-role mapping is intentionally fixed by the project plan. The
@@ -76,6 +77,7 @@ def normalize_public_host(raw_value: str) -> str:
 def main() -> int:
   """Build the server-side runtime file used by the DinD stack."""
   args = parse_args()
+  log = build_console_logger("servers-runtime")
   server_root = Path(__file__).resolve().parents[2]
   repo_root = server_root.parent
   tunnels_path = server_root / "tunnels.json"
@@ -131,14 +133,14 @@ def main() -> int:
 
   # Print only derived, non-secret information so operators can verify success
   # without leaking tunnel tokens.
-  print(f"generated {dind_env_path.relative_to(repo_root)}")
-  print(f"ensured {logs_raw_dir.relative_to(repo_root)} exists")
-  print(f"enabled services: {args.enabled_services}")
-  print("tunnel assignments:")
+  log_message(log, f"generated {dind_env_path.relative_to(repo_root)}", color="green")
+  log_message(log, f"ensured {logs_raw_dir.relative_to(repo_root)} exists", color="green")
+  log_message(log, f"enabled services: {args.enabled_services}", color="cyan")
+  log_message(log, "tunnel assignments:", color="yellow")
   for (prefix, _), entry in zip(ROLE_ASSIGNMENTS, tunnels):
     public_host = normalize_public_host(str(entry.get("url", "")))
     tunnel_name = str(entry.get("tunnel_name", "")).strip()
-    print(f"- {prefix}: {public_host} ({tunnel_name or 'unnamed'})")
+    log_message(log, f"{prefix}: {public_host} ({tunnel_name or 'unnamed'})")
 
   return 0
 

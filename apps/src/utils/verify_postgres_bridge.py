@@ -11,6 +11,7 @@ if str(SRC_DIR) not in sys.path:
   sys.path.insert(0, str(SRC_DIR))
 
 from utils.dependencies import get_psycopg_module
+from utils.sdk_logging import build_console_logger, log_message
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,6 +26,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
   args = parse_args()
+  log = build_console_logger("apps-pg-verify")
   psycopg = get_psycopg_module()
   with psycopg.connect(
     host=args.host,
@@ -39,7 +41,7 @@ def main() -> int:
       cursor.execute("SELECT 1")
       value = cursor.fetchone()[0]
 
-  print(f"postgres bridge verification result: {value}")
+  log_message(log, f"postgres bridge verification result: {value}", color="green" if value == 1 else "red")
   return 0 if value == 1 else 1
 
 

@@ -14,6 +14,7 @@ if str(SRC_DIR) not in sys.path:
   sys.path.insert(0, str(SRC_DIR))
 
 from utils.docker_runtime import docker_status
+from utils.sdk_logging import build_console_logger, log_message
 
 
 def parse_args() -> argparse.Namespace:
@@ -53,28 +54,29 @@ def main() -> int:
   ``python3 servers/src/utils/wait_for_stack.py --run-ts 260320_221836``
   """
   args = parse_args()
+  log = build_console_logger("servers-wait")
   server_root = Path(__file__).resolve().parents[2]
   run_ts = args.run_ts
   ready_path = server_root / "_logs" / "raw" / f"{run_ts}_topology_ready.json"
   deadline = time.time() + args.timeout_seconds
 
-  print(f"waiting for topology readiness marker {ready_path}", flush=True)
+  log_message(log, f"waiting for topology readiness marker {ready_path}", color="cyan")
   while time.time() < deadline:
     if ready_path.exists():
       payload = json.loads(ready_path.read_text(encoding="utf-8"))
       if payload.get("all_ready") is True:
         # The orchestrator writes this marker only after every discovered
         # service script has reported ready.
-        print("topology is ready", flush=True)
+        log_message(log, "topology is ready", color="green")
         print(json.dumps(payload, indent=2), flush=True)
         return 0
 
     # Keep emitting progress so first-time image pulls and Neo4j startup delays
     # still look intentional rather than hung.
-    print(f"current top-level container status: {docker_status()}", flush=True)
+    log_message(log, f"current top-level container status: {docker_status()}", color="yellow")
     time.sleep(5)
 
-  print("timed out waiting for the DinD-host topology", flush=True)
+  log_message(log, "timed out waiting for the DinD-host topology", color="red")
   return 1
 
 

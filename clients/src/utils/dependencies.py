@@ -78,22 +78,6 @@ def get_requests_module() -> ModuleType:
   return _import_required_module("requests")
 
 
-def get_websocket_module() -> ModuleType:
-  """Return the lazily imported `websocket-client` module.
-
-  Returns
-  -------
-  ModuleType
-    Imported `websocket` module.
-
-  Examples
-  --------
-  The universal bridge calls this before creating the Cloudflare websocket
-  connection.
-  """
-  return _import_required_module("websocket")
-
-
 def get_graph_database_class():
   """Return Neo4j's `GraphDatabase` class lazily.
 

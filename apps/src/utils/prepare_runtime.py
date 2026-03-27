@@ -19,6 +19,7 @@ from utils.demo_config import (
   PGADMIN_DEFAULT_EMAIL,
   PGADMIN_DEFAULT_PASSWORD,
 )
+from utils.sdk_logging import build_console_logger, log_message
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,6 +41,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
   args = parse_args()
+  log = build_console_logger("apps-runtime")
   app_root = Path(__file__).resolve().parents[2]
   repo_root = app_root.parent
   runtime_dir = app_root / ".runtime"
@@ -68,13 +70,13 @@ def main() -> int:
   ]
   dind_env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-  print(f"generated {dind_env_path.relative_to(repo_root)}")
-  print(f"ensured {logs_raw_dir.relative_to(repo_root)} exists")
-  print(f"enabled services: {args.enabled_services}")
-  print(f"remote PostgreSQL public host: {args.remote_postgres_public_host}")
-  print(f"public app UI host: {args.app_ui_public_host}")
-  print(f"local bridge bind: {APP_BRIDGE_LOCAL_HOST}:{APP_BRIDGE_LOCAL_PORT}")
-  print(f"local app UI bind: {APP_UI_LOCAL_HOST}:{APP_UI_LOCAL_PORT}")
+  log_message(log, f"generated {dind_env_path.relative_to(repo_root)}", color="green")
+  log_message(log, f"ensured {logs_raw_dir.relative_to(repo_root)} exists", color="green")
+  log_message(log, f"enabled services: {args.enabled_services}", color="cyan")
+  log_message(log, f"remote PostgreSQL public host: {args.remote_postgres_public_host}", color="cyan")
+  log_message(log, f"public app UI host: {args.app_ui_public_host}", color="cyan")
+  log_message(log, f"local bridge bind: {APP_BRIDGE_LOCAL_HOST}:{APP_BRIDGE_LOCAL_PORT}", color="yellow")
+  log_message(log, f"local app UI bind: {APP_UI_LOCAL_HOST}:{APP_UI_LOCAL_PORT}", color="yellow")
   return 0
 
 

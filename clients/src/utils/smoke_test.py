@@ -13,6 +13,8 @@ SRC_DIR = Path(__file__).resolve().parents[1]
 if str(SRC_DIR) not in sys.path:
   sys.path.insert(0, str(SRC_DIR))
 
+from utils.sdk_logging import build_console_logger, log_message
+
 
 def parse_args() -> argparse.Namespace:
   """Parse CLI arguments for the smoke test.
@@ -48,13 +50,14 @@ def main() -> int:
   ``python3 clients/src/utils/smoke_test.py --run-ts 260320_221626``
   """
   args = parse_args()
+  log = build_console_logger("smoke-test")
   client_root = Path(__file__).resolve().parents[2]
   run_ts = args.run_ts
   report_path = client_root / "_logs" / "raw" / f"{run_ts}_experiment_report.json"
   deadline = time.time() + 300
   last_error = "no report observed"
 
-  print(f"waiting for experiment report {report_path}", flush=True)
+  log_message(log, f"waiting for experiment report {report_path}", color="cyan")
   while time.time() < deadline:
     if report_path.exists():
       try:
@@ -83,17 +86,17 @@ def main() -> int:
         topology_result.get("top_level_published_ports") == [],
       ]
       if all(checks):
-        print("smoke test passed", flush=True)
+        log_message(log, "smoke test passed", color="green")
         print(json.dumps(payload, indent=2), flush=True)
         return 0
 
       # Keep the full payload text around so timeout output is actionable.
       last_error = json.dumps(payload, indent=2)
 
-    print(f"waiting for healthy experiment report: {last_error}", flush=True)
+    log_message(log, f"waiting for healthy experiment report: {last_error}", color="yellow")
     time.sleep(5)
 
-  print("smoke test failed", flush=True)
+  log_message(log, "smoke test failed", color="red")
   print(last_error, flush=True)
   return 1
 

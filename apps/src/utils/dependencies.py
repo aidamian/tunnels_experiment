@@ -18,7 +18,3 @@ def _import_required_module(module_name: str) -> ModuleType:
 
 def get_psycopg_module() -> ModuleType:
   return _import_required_module("psycopg")
-
-
-def get_websocket_module() -> ModuleType:
-  return _import_required_module("websocket")

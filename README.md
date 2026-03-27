@@ -13,8 +13,6 @@ This repository demonstrates Cloudflare Tunnel across three isolated worlds:
 |-- start_e2e.sh
 |-- start_host.sh
 |-- start_apps.sh
-|-- shared/
-|   `-- src/
 |-- clients/
 |   |-- services.json
 |   |-- requirements.txt
@@ -37,7 +35,7 @@ This repository demonstrates Cloudflare Tunnel across three isolated worlds:
 - `servers/` owns the origin DinD host, tunnel inventory, and server runtime/log output.
 - `apps/` owns the consumer DinD host, the internal Python bridge, and app runtime/log output.
 - `clients/` owns the real-machine proof client and `clients/services.json`.
-- `shared/` owns neutral reusable code that may be imported by both `clients/` and `apps/`.
+- `shared/` is currently reserved for future neutral code; the active bridge and logger now come from the Ratio1 SDK.
 - Root `_logs/` stays documentation-only.
 
 ## Topology
@@ -76,7 +74,8 @@ The critical rule is unchanged: neither top-level DinD host publishes service po
 
 - Neo4j HTTPS is a normal public HTTPS application.
 - Neo4j Bolt and PostgreSQL are Tunnel-published TCP applications carried to consumers over WebSocket.
-- `shared/src/tunnel_common/universal.py` converts those public TCP tunnel hostnames into localhost TCP sockets for both the real-machine client and `dind-host-app`, and can be run directly as a one-bridge-per-process daemon.
+- the real-machine client imports `UniversalBridgeServer` from `ratio1.bridge`
+- `dind-host-app` launches one bridge process with the SDK `r1bridge` CLI
 - Inside `dind-host-app`, `pgadmin-demo` connects to `127.0.0.1:55432` and behaves as if PostgreSQL were local to that DinD host.
 
 ## Main Commands

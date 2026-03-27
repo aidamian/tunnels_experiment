@@ -2,7 +2,7 @@
 
 This CLI is the bridge component's operator-facing entrypoint for manual host
 testing. It intentionally stays independent of client-side ``cloudflared`` and
-uses the repository's own Python bridge implementation instead.
+uses the Ratio1 SDK bridge implementation directly.
 """
 
 from __future__ import annotations
@@ -15,13 +15,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from ratio1.bridge import UniversalBridgeServer
 
 SRC_DIR = Path(__file__).resolve().parents[1]
-SHARED_SRC_DIR = Path(__file__).resolve().parents[3] / "shared" / "src"
 if str(SRC_DIR) not in sys.path:
   sys.path.insert(0, str(SRC_DIR))
-if str(SHARED_SRC_DIR) not in sys.path:
-  sys.path.insert(0, str(SHARED_SRC_DIR))
 
 from bridge.local_bridges import (
   LOCALHOST,
@@ -32,8 +30,6 @@ from bridge.local_bridges import (
 )
 from simulators.neo4j_bolt import verify_neo4j_bolt_bridge
 from simulators.postgres import verify_postgres_bridge
-from tunnel_common.universal import UniversalBridgeServer
-from utils.console import colorize, format_line
 from utils.demo_config import (
   NEO4J_PASSWORD,
   NEO4J_USER,
@@ -41,6 +37,7 @@ from utils.demo_config import (
   POSTGRES_PASSWORD,
   POSTGRES_USER,
 )
+from utils.sdk_logging import build_console_logger, build_persistent_logger, log_message
 
 
 def parse_args() -> argparse.Namespace:
@@ -65,7 +62,7 @@ def parse_args() -> argparse.Namespace:
 
   parser = argparse.ArgumentParser(
     description=(
-      "Start local Python TCP bridges so DBeaver and Bolt clients can connect "
+      "Start local Ratio1 SDK TCP bridges so DBeaver and Bolt clients can connect "
       "without any client-side cloudflared dependency."
     )
   )
@@ -111,38 +108,40 @@ def selected_specs(args: argparse.Namespace) -> list[Any]:
 
 
 def print_connection_instructions(started_bridges: list[dict[str, Any]]) -> None:
-  print(colorize(format_line("bridge-cli", "started local Python bridges:"), "cyan"), flush=True)
+  bridge_cli_log = build_console_logger("bridge-cli")
+  log_message(bridge_cli_log, "started local Ratio1 SDK bridges:", color="cyan")
   for bridge in started_bridges:
-    print(
-      f"- {bridge['service_name']}: wss://{bridge['public_host']} -> "
-      f"{bridge['local_host']}:{bridge['local_port']}"
+    log_message(
+      bridge_cli_log,
+      f"{bridge['service_name']}: wss://{bridge['public_host']} -> {bridge['local_host']}:{bridge['local_port']}",
     )
 
   started_keys = {bridge["service_key"] for bridge in started_bridges}
 
   if "postgres" in started_keys:
     postgres_port = next(item["local_port"] for item in started_bridges if item["service_key"] == "postgres")
-    print("postgres client settings:")
-    print(f"- host: {LOCALHOST}")
-    print(f"- port: {postgres_port}")
-    print(f"- database: {POSTGRES_DB}")
-    print(f"- user: {POSTGRES_USER}")
-    print(f"- password: {POSTGRES_PASSWORD}")
-    print("- ssl mode: disable")
+    log_message(bridge_cli_log, "postgres client settings:", color="green")
+    log_message(bridge_cli_log, f"host: {LOCALHOST}")
+    log_message(bridge_cli_log, f"port: {postgres_port}")
+    log_message(bridge_cli_log, f"database: {POSTGRES_DB}")
+    log_message(bridge_cli_log, f"user: {POSTGRES_USER}")
+    log_message(bridge_cli_log, f"password: {POSTGRES_PASSWORD}")
+    log_message(bridge_cli_log, "ssl mode: disable")
 
   if "neo4j_bolt" in started_keys:
     neo4j_port = next(item["local_port"] for item in started_bridges if item["service_key"] == "neo4j_bolt")
-    print("neo4j bolt client settings:")
-    print(f"- uri: bolt://{LOCALHOST}:{neo4j_port}")
-    print(f"- username: {NEO4J_USER}")
-    print(f"- password: {NEO4J_PASSWORD}")
-    print("- encryption: off for the localhost leg")
+    log_message(bridge_cli_log, "neo4j bolt client settings:", color="blue")
+    log_message(bridge_cli_log, f"uri: bolt://{LOCALHOST}:{neo4j_port}")
+    log_message(bridge_cli_log, f"username: {NEO4J_USER}")
+    log_message(bridge_cli_log, f"password: {NEO4J_PASSWORD}")
+    log_message(bridge_cli_log, "encryption: off for the localhost leg")
 
 
 def maybe_verify(
   args: argparse.Namespace,
   started_bridges: list[dict[str, Any]],
 ) -> dict[str, Any]:
+  bridge_cli_log = build_console_logger("bridge-cli")
   verification: dict[str, Any] = {}
   if not args.verify:
     return verification
@@ -153,9 +152,9 @@ def maybe_verify(
     if bridge["service_key"] == "neo4j_bolt":
       verification["neo4j"] = verify_neo4j_bolt_bridge(bridge["local_port"])
 
-  print(colorize(format_line("bridge-cli", "verification results:"), "yellow"), flush=True)
+  log_message(bridge_cli_log, "verification results:", color="yellow")
   for service_key, result in verification.items():
-    print(f"- {service_key}: ok={result['ok']} query_result={result['query_result']}")
+    log_message(bridge_cli_log, f"{service_key}: ok={result['ok']} query_result={result['query_result']}")
 
   return verification
 
@@ -184,23 +183,29 @@ def main() -> int:
   run_ts = args.run_ts or f"manual_{datetime.now().strftime('%y%m%d_%H%M%S')}"
   specs = selected_specs(args)
   raw_logs_dir = client_root() / "_logs" / "raw"
+  bridge_cli_log = build_console_logger("bridge-cli")
   started_bridges: list[dict[str, Any]] = []
   servers: list[UniversalBridgeServer] = []
 
   try:
     with ExitStack() as stack:
       for spec in specs:
+        bridge_log, bridge_log_path = build_persistent_logger(
+          f"{spec.service_key}_manual_bridge",
+          base_folder=raw_logs_dir,
+          app_folder=run_ts,
+        )
         server = UniversalBridgeServer(
           name=f"{spec.service_key}_manual_bridge",
           hostname=spec.public_host,
           local_port=spec.local_port,
-          run_ts=run_ts,
-          raw_logs_dir=raw_logs_dir,
-          log_color="green" if spec.service_key == "postgres" else "blue",
+          log=bridge_log,
         )
         stack.enter_context(server)
         servers.append(server)
-        started_bridges.append(bridge_state(spec))
+        started = bridge_state(spec)
+        started["log_path"] = str(bridge_log_path)
+        started_bridges.append(started)
 
       maybe_verify(args, started_bridges)
       print_connection_instructions(started_bridges)
@@ -215,13 +220,13 @@ def main() -> int:
           server.raise_if_failed()
         return 0
 
-      print(colorize(format_line("bridge-cli", "bridges running; press Ctrl+C to stop"), "cyan"), flush=True)
+      log_message(bridge_cli_log, "bridges running; press Ctrl+C to stop", color="cyan")
       while True:
         for server in servers:
           server.raise_if_failed()
         time.sleep(1)
   except KeyboardInterrupt:
-    print(colorize(format_line("bridge-cli", "stopping local Python bridges"), "yellow"), flush=True)
+    log_message(bridge_cli_log, "stopping local Ratio1 SDK bridges", color="yellow")
     return 0
 
 

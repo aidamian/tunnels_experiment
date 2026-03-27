@@ -5,8 +5,6 @@ services:
     build:
       context: .
       dockerfile: docker/dind/Dockerfile
-      additional_contexts:
-        shared_src: ../shared/src
     container_name: dind-host-app
     privileged: true
     env_file:

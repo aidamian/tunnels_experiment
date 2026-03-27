@@ -12,6 +12,8 @@ SRC_DIR = Path(__file__).resolve().parents[1]
 if str(SRC_DIR) not in sys.path:
   sys.path.insert(0, str(SRC_DIR))
 
+from utils.sdk_logging import build_console_logger, log_message
+
 
 def parse_args() -> argparse.Namespace:
   """Parse CLI arguments for the summary writer.
@@ -64,6 +66,7 @@ def main() -> int:
   ``python3 clients/src/utils/write_summary.py --run-ts 260320_221626``
   """
   args = parse_args()
+  log = build_console_logger("write-summary")
   client_root = Path(__file__).resolve().parents[2]
   repo_root = Path(__file__).resolve().parents[3]
   run_ts = args.run_ts
@@ -114,7 +117,7 @@ def main() -> int:
   # Overwrite the per-run summary so rerunning the same run id keeps a single
   # authoritative markdown snapshot for that run identifier.
   summary_path.write_text(summary + "\n", encoding="utf-8")
-  print(f"wrote {summary_path}")
+  log_message(log, f"wrote {summary_path}", color="green")
   return 0
 
 

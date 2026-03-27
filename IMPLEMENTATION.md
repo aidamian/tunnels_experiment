@@ -6,8 +6,8 @@ This file is the source of truth for the current architecture, workflow, validat
 ## Status
 
 - Phase: verified two-host DinD topology with an app-side bridge-backed pgAdmin flow
-- Latest verified combined host-and-app proof run: `260327_091041`
-- Latest verified interactive app-side hold run: `260327_080359`
+- Latest verified combined host-and-app proof run: `260327_105603`
+- Latest verified app-only proof run: `260327_105232`
 
 ## Objective
 
@@ -35,7 +35,7 @@ Build a reproducible demo showing that:
   - owns the real-machine Python proof client, `clients/services.json`, client virtualenv inputs, and client raw logs
 
 - `shared/`
-  - owns neutral reusable code that may be imported by multiple worlds without crossing ownership boundaries
+  - is currently reserved for future neutral reusable code; the active bridge and logger live in the Ratio1 SDK instead of this repository
 
 - root
   - owns orchestration scripts, tracked docs, and tracked markdown summaries only
@@ -82,7 +82,8 @@ Build a reproducible demo showing that:
 - `cloudflared tunnel run --url tcp://127.0.0.1:15432` publishes PostgreSQL in Cloudflare TCP mode
 - `cloudflared tunnel run --url http://127.0.0.1:18080` publishes the app UI in normal HTTP proxy mode
 - published Tunnel TCP applications still require a TCP-to-WebSocket bridge on the consumer side
-- the single shared bridge implementation and generic single-bridge CLI live in `shared/src/tunnel_common/universal.py`
+- host-side bridge code imports `UniversalBridgeServer` from `ratio1.bridge`
+- `dind-host-app` launches its bridge with the SDK `r1bridge` CLI
 - `pgadmin-demo` uses `--network host` inside `dind-host-app`, so `127.0.0.1:55432` refers to the bridge in the app DinD host, not the real machine
 
 ### Runtime Generation
@@ -144,10 +145,12 @@ It defines:
 ## Logging Rules
 
 - root entrypoint scripts use ANSI-colored step logs
+- Python status logs use quiet `ratio1.Logger` instances instead of repo-owned ANSI helper modules
 - server shell logs use scope-based ANSI colors in `servers/_logs/raw/*.log`
 - app shell and bridge logs use scope-based ANSI colors in `apps/_logs/raw/*.log`
-- client bridge logs use ANSI-colored `.log` streams in `clients/_logs/raw/*.log`
+- client bridge log files are written by Ratio1 logger instances under `clients/_logs/raw/<RUN_TS>/_logs/*.txt`
 - JSON, Markdown, and env files must remain plain text
+- scripts whose stdout is parsed as JSON keep that stdout plain and do not route it through the SDK logger
 
 ## Expected Workflow
 
@@ -196,7 +199,7 @@ Default app-side automation:
 
 - static checks:
   - `bash -n start_e2e.sh start_host.sh start_apps.sh`
-  - `python3 -m compileall shared/src clients/src servers/src apps/src`
+  - `python3 -m compileall clients/src servers/src apps/src`
   - `docker compose --project-directory servers -f servers/docker-compose.yml config -q`
   - `docker compose --project-directory apps -f apps/docker-compose.yml config -q` after app runtime generation
 
@@ -245,7 +248,7 @@ Default app-side automation:
 - no client file reads server or app runtime/log folders
 - no app file reads `servers/tunnels.json` or client-owned runtime files
 - no server file reads client or app runtime files
-- shared bridge code stays free of world-owned runtime reads and secret reads
+- no repo-owned bridge implementation remains on the hot path; TCP bridge behavior comes from `ratio1.bridge`
 - the server DinD image build context stays under `servers/`
 - the app DinD image build context stays under `apps/`
 
@@ -271,6 +274,6 @@ Default app-side automation:
 ### Operational Quality
 
 - `bash -n start_e2e.sh start_host.sh start_apps.sh` passes
-- `python3 -m compileall shared/src clients/src servers/src apps/src` passes
-- `./start_e2e.sh --duration-seconds 1` passes and records the app proof in `_logs/260326_235130_summary.md`
-- `timeout -s INT 240 ./start_apps.sh` reaches the verified hold state and tears down cleanly on Ctrl-C for run `260326_234729`
+- `python3 -m compileall clients/src servers/src apps/src` passes
+- `./start_e2e.sh --duration-seconds 1` passes and records the app proof in `_logs/260327_105603_summary.md`
+- `./start_apps.sh --exit-after-verify` passes for run `260327_105232`

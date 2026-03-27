@@ -8,7 +8,6 @@ scope="pgadmin-service"
 service_key="pgadmin"
 container_name="pgadmin-demo"
 bridge_name="app_postgres_bridge"
-bridge_log_color="green"
 image_name="tunnel-demo-pgadmin-ui:latest"
 image_build_dir="/opt/tunnel-app/assets/pgadmin"
 ready_file="$(ready_file_for_service "${service_key}")"
@@ -44,13 +43,10 @@ start_bridge() {
   local bridge_pid
 
   mkdir -p "${runtime_dir}"
-  python3 /opt/tunnel-app/shared/src/tunnel_common/universal.py \
+  r1bridge \
     --name "${bridge_name}" \
     --hostname "${REMOTE_POSTGRES_PUBLIC_HOST}" \
-    --local-port "${APP_BRIDGE_LOCAL_PORT}" \
-    --run-ts "${RUN_TS}" \
-    --raw-logs-dir "${RAW_LOGS_DIR}" \
-    --log-color "${bridge_log_color}" &
+    --local-port "${APP_BRIDGE_LOCAL_PORT}" &
   bridge_pid="$!"
   managed_pids+=("${bridge_pid}")
   wait_until "${scope}" "local PostgreSQL bridge ${APP_BRIDGE_LOCAL_HOST}:${APP_BRIDGE_LOCAL_PORT}" 60 1 nc -z "${APP_BRIDGE_LOCAL_HOST}" "${APP_BRIDGE_LOCAL_PORT}"

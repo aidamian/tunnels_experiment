@@ -27,11 +27,9 @@ Read these files before making non-trivial changes:
 - `apps/docker-compose.yml`
   - defines top-level `dind-host-app`
 - `apps/docker/dind/servers/pgadmin.sh`
-  - starts the app-host Python bridge, verifies PostgreSQL through it, starts `pgadmin-demo`, and publishes the app HTTPS UI
-- `shared/src/tunnel_common/universal.py`
-  - single shared TCP-to-WebSocket bridge implementation and direct single-bridge CLI used by both `clients/` and `apps/`
+  - starts the app-host bridge through the SDK `r1bridge` CLI, verifies PostgreSQL through it, starts `pgadmin-demo`, and publishes the app HTTPS UI
 - `clients/src/experiment_runner.py`
-  - host-side proof runner
+  - host-side proof runner using `ratio1.bridge.UniversalBridgeServer`
 - `clients/services.json`
   - client-side public service catalog and local bridge defaults
 
